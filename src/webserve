@@ -1,0 +1,487 @@
+#! /usr/bin/env bash
+
+#===================================================================================
+#                                  Constants
+#===================================================================================
+VERSION=0.01
+
+#===================================================================================
+#                              Response Functions
+#===================================================================================
+response::set_status() {
+    local _code="${1}"
+    local _version="${2}"
+
+    local HTTP_CODE=(
+        [200]="OK"
+        [400]="Bad Request"
+        [403]="Forbidden"
+        [404]="Not Found"
+        [405]="Method Not Allowed"
+        [500]="Internal Server Error"
+    )
+
+    headers[0]="${_version} ${_code} ${HTTP_CODE[${_code}]}"
+}
+
+response::send() {
+    # Response content comes in via stdin
+    {
+        response::get_headers
+        echo
+        cat
+    } | sed -e 's/$/\r/'
+}
+
+response::add_header() {
+    headers[${#headers[@]}]="$*"
+}
+
+response::get_headers() {
+    local _index
+
+    for ((_index=0; _index < ${#headers[@]}; ++_index)) {
+        echo "${headers[${_index}]}"
+    }
+}
+
+#===================================================================================
+#                                Headers
+#===================================================================================
+header::server_type() {
+    response::add_header "Server: ${HTTP_SCRIPT}"
+}
+
+header::text_html() {
+    header::content_type text/html
+}
+
+header::text_plain() {
+    header::content_type "text/plain; charset=utf-8"
+}
+
+header::application_json() {
+    header::content_type application/json
+}
+
+header::application_javascript() {
+    header::content_type application/javascript
+}
+
+header::text_css() {
+    header::content_type text/css
+}
+
+header::content_type() {
+    response::add_header "Content-Type: ${1}"
+}
+
+header::content_length() {
+    test "${1:-0}" -gt 0 && response::add_header "Content-Length: ${1}"
+}
+
+header::access_control() {
+    response::add_header "Access-Control-Allow-Headers: ${1}"
+    response::add_header "Access-Control-Allow-Origin: ${1}"
+}
+
+#===================================================================================
+#                                TCP/IP
+#===================================================================================
+tcp::available_ports() {
+    start_port=${1:-9000}
+    protocol=${2:-tcp}
+
+    address_family=$(echo ${protocol}4 | sed -e 's/^[^0-9]*//g' | dd bs=1 count=1 2>/dev/null)
+    protocol=$(echo ${protocol} | sed -e 's/[0-9].*$//g')
+
+    netstat -ln --${protocol} -${address_family} |
+    awk '{print $4;}' |
+    awk -F: '{print $2;}' |
+    sed -e '/^[ ]*$/d' |
+    sort -n |
+    awk '{
+        for (; i < $1; ++i)
+        {
+            print i;
+        }
+
+        if (i == $1)
+        {
+            ++i;
+        }
+    }' i=${start_port}
+}
+
+tcp::get_unused_port() {
+    tcp::available_ports $* | (read row && echo $row)
+}
+
+#===================================================================================
+#                                URL Matching
+#===================================================================================
+url::add_handler() {
+    local _regex="${1}"
+    local _methods="${2}" # GET,POST
+    local _handler="${3}" # http::handler...
+
+    URL_REGEXES["${#URL_REGEXES[@]}"]="_regex='${_regex}'; _methods='${_methods}'; _handler='${_handler}'"
+}
+
+url::match_handler() {
+    local _method="${1}"
+    local _request="${2}"
+
+    local _regex
+    local _methods
+    local _handler
+    local _index
+
+    for ((_index=0; _index < ${#URL_REGEXES[@]}; ++_index)) {
+        eval "${URL_REGEXES[${_index}]}"
+
+        if [ -z "$(echo "${_request}" | awk "/${_regex}/"'{print $1;}')" ]
+        then
+            :
+        elif ! (echo "${_methods}" | awk -F, '{for (i=1; i <= NF; ++i) {print $i;}}' | grep -q '^'"${_method}"'$')
+        then
+            :
+        else
+            echo "${_handler}"
+            return 0
+        fi
+    }
+
+    return 255
+}
+
+#===================================================================================
+#                                HTTP Handlers
+#===================================================================================
+logging::info() {
+    local _retval=$?
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S'): $*" >&2
+    return $_retval
+}
+
+logging::fatal() {
+    local _retval=$?
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S'): $*" >&2
+    exit $_retval
+}
+
+http::400_error() {
+    response::set_status 400 "HTTP/1.1"
+    header::server_type
+    echo "ERROR" | response::send
+}
+
+http::404_error() {
+    response::set_status 404 "HTTP/1.1"
+    header::server_type
+    echo "ERROR" | response::send
+}
+
+http::response_html() {
+    response::set_status 200 "HTTP/1.1"
+    header::server_type
+    header::text_html
+    response::send
+}
+
+http::response_json() {
+    response::set_status 200 "HTTP/1.1"
+    header::server_type
+    header::application_json
+    response::send
+}
+
+http::response_css() {
+    response::set_status 200 "HTTP/1.1"
+    header::server_type
+    header::text_css
+    response::send
+}
+
+http::response_javascript() {
+    response::set_status 200 "HTTP/1.1"
+    header::server_type
+    header::application_javascript
+    header::access_control '*'
+    response::send
+}
+
+http::response_plain() {
+    response::set_status 200 "HTTP/1.1"
+    header::server_type
+    header::text_plain
+    response::send
+}
+
+http::response_file() {
+    local _method="${1}"
+    local _request="${2}"
+    local _headers="${3}"
+    local _filename="${_SERVER_STATIC}/$(basename "${_request}")"
+    local _extension="$(echo "${_filename}" | awk -F. '{print $NF;}' | tr '[A-Z]' '[a-z]')"
+
+    if [ ! -f "${_filename}" ]
+    then
+        http::404_error
+        return 255
+    fi
+
+    case "${_extension}" in
+        html)
+            http::response_html
+            ;;
+
+        js)
+            http::response_javascript
+            ;;
+
+        json)
+            http::response_json
+            ;;
+
+        css)
+            http::response_css
+            ;;
+
+        *)
+            response::set_status 200 "HTTP/1.1"
+            header::server_type
+            header::content_type "$(file -b --mime-type "${_filename}")"
+            header::content_length "$(stat -c'%s' "${_filename}")"
+            header::access_control '*'
+            response::send
+            ;;
+    esac < "${_filename}"
+}
+
+http::response_script() {
+    local _method="${1}"
+    local _request="${2}"
+    local _headers="${3}"
+    local _action="$(basename "${_request}")"
+    local _filename="${_SERVER_API}/${_action}"
+
+    if result="$("${_filename}")" # Result must be valid JSON object
+    then
+        echo "{\"action\": \"${_action}\", \"result\": ${result}}" | http::response_json
+    else
+        http::400_error
+    fi
+}
+
+http::handle_request() {
+    headers=(
+        "HTTP/1.1 200 OK"
+    )
+
+    URL_REGEXES=()
+
+    local _method
+    local _request
+    local _version
+    local _handler
+    local _row
+
+    if ! read _method _request _version
+    then
+        http::400_error
+        return 255
+    fi
+
+    logging::info "${_method}" "${_request}"
+
+    # Fetch incoming headers
+    local _headers="$(
+        while read -t 0.01 _row
+        do
+            echo "${_row}"
+        done | sed -e 's/\r//g' -e '/^[ ]*$/d'
+    )"
+
+    http::url_mappings
+
+    if ! _handler="$(url::match_handler "${_method}" "${_request}")"
+    then
+        http::404_error
+        return 255
+    fi
+
+    "${_handler:-"http::404_error"}" "${_method}" "${_request}" "${_headers}"
+}
+
+http::run_server() {
+    local _shell="$(which bash)"
+    local _port="${1}"
+
+    if [ -z "${_port}" ]
+    then
+        logging::fatal "Need to supply a server port"
+    fi
+
+    logging::info "Starting webserver on port ${_port} with static folder '${_SERVER_STATIC}'"
+
+    exec ncat \
+        -l ${_port} \
+        --max-conns 12 \
+        --keep-open \
+        --allow 127.0.0.1 \
+        --sh-exec "'${_shell}' -c '. \"${_SERVER_SCRIPT}\"; http::handle_request'"
+}
+
+http::url_mappings() {
+    # Import external module url mappings
+    for name in $(declare -F | awk '{print $NF;}' | grep '^http::[0-9a-zA-Z_][0-9a-zA-Z_]*::url_mappings')
+    do
+        logging::info "Import url mappings from ${name}"
+        "${name}"
+    done
+
+    url::add_handler '^\/static\/.*$' GET http::response_file
+
+    if [ -n "${_SERVER_API}" -a -d "${_SERVER_API}" ]
+    then
+        url::add_handler '^\/api\/.*$' GET http::response_script
+    fi
+}
+
+#===================================================================================
+#               Break out here if running in the request handling context
+#===================================================================================
+if ${_IN_SERVER_REQUEST_HANDLER:=false}
+then
+    _modules="$(echo "${_SERVER_MODULES}" | sed -e '/^[ ]*$/d' | sort -u)"
+    _index=0
+
+    while [ -n "${_modules}" ]
+    do
+        ((++_index))
+
+        _module="$(readlink -f "$(echo "${_modules}" | head -1)")"
+        _modules="$(echo "${_modules}" | tail --lines=+2)"
+        logging::info "Loading ${_module}"
+
+        # Extract http::<name> function definitions and transform only the declaration names to http::<index>::<name>
+        _definitions="$(
+            bash -c ". '${_module}'"'; for name in $(declare -F | awk '"'"'{print $NF;}'"'"' | grep "^http::"); do declare -f "${name}"; done' |
+            sed -e 's/^http::\([0-9a-zA-Z_][0-9a-zA-Z_]*\)[ ]/http::'"${_index}"'::\1 /g'
+        )"
+
+        # Import modified functions into local namespace
+        eval "${_definitions}"
+    done
+
+    return
+fi
+
+#===================================================================================
+#                              Help Message
+#===================================================================================
+showhelp()
+{
+    long_options=${*}
+
+    show_options()
+    {
+        convert_to_one_liner()
+        {
+            sed -e 's/^[ ]*//g' -e '/^$/d' | tr '\n' ' '
+        }
+
+        echo "${long_options}" | awk -F, '{
+            for (i=1; i <= NF; ++i){
+                parameter=$i;
+                value="";
+
+                if ($i ~ /[:]$/)
+                {
+                    parameter=substr($i, 0, length($i) - 1);
+                    value=sprintf("=<%s>", parameter);
+                }
+
+                printf("[--%s%s]\n", parameter, value);
+            }
+        }' | convert_to_one_liner
+    }
+
+    echo "Usage: $0 $(show_options)" >&2
+}
+
+#===================================================================================
+# NOTE: There is a bug in getopts where not specifying at least one short option
+#       will cause the first non option parameter to be discarded. Here, we just
+#       use -h (help)
+#===================================================================================
+long_options="api:,static:,help,port:,module:,version"
+
+OPTION_TEMP=$(getopt -a -o hva:s:p:m: --long ${long_options} -- "$@")
+
+if [ $? != 0 ]
+then
+    echo "Invalid command line options ${OPTION_TEMP}" >&2
+    exit 15
+fi
+
+eval set -- "$OPTION_TEMP"
+
+#===================================================================================
+#                       Process command line parameters
+#
+# NOTE: The command line parameters are available for scripts which
+#       source this file.
+#===================================================================================
+export _SERVER_SCRIPT="${BASH_SOURCE[0]}"
+export _SERVER_STATIC="$(dirname "${SERVER_SCRIPT}")"
+export _SERVER_API=
+export _SERVER_MODULES=
+
+listener_port=$(tcp::get_unused_port)
+
+while true
+do
+    case "$1" in
+        --version|-v)
+            echo "${VERSION}"
+            exit 0
+            ;;
+
+        --port|-p)
+            listener_port=$2
+            shift 2
+            ;;
+
+        --module|-m)
+            _SERVER_MODULES="$(echo "${_SERVER_MODULES}"; echo "${2}")"
+            shift 2
+            ;;
+
+        --static|-s)
+            export _SERVER_STATIC="$(readlink -f "${2}")"
+            shift 2
+            ;;
+
+        --api)
+            export _SERVER_API="$(readlink -f "${2}")"
+            shift 2
+            ;;
+
+        --)
+            shift
+            break
+            ;;
+
+        *)
+            showhelp "${long_options}" >&2
+            exit 0
+            ;;
+    esac
+done
+
+#===================================================================================
+#                 Run server with options and setting context
+#===================================================================================
+_IN_SERVER_REQUEST_HANDLER=true http::run_server "${listener_port}"

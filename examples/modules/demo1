@@ -1,0 +1,9 @@
+#! /usr/bin/env bash
+
+http::me::get_data() {
+    echo '{"one": 1}' | http::response_json
+}
+
+http::url_mappings() {
+    url::add_handler '^\/me$' GET http::me::get_data
+}

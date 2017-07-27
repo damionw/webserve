@@ -1,0 +1,48 @@
+#! /usr/bin/env bash
+
+logging::info() {
+    local _retval=$?
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S'): $*" >&2
+    return $_retval
+}
+
+logging::fatal() {
+    local _retval=$?
+    echo -e "$(date '+%Y-%m-%d %H:%M:%S'): $*" >&2
+    exit $_retval
+}
+
+test_basic() {
+    local success=true
+
+    logging::info WARNING!!! test unimplemented
+
+    $success
+}
+
+all_tests="$(declare -F | grep ' test_[^\ ][^\ ]*$' | sed -e 's/^declare -f //g')"
+
+if [ -n "${selection}" ]
+then
+    regex='^('"$(echo "${selection}" | awk '{for (i=1; i <= NF; ++i) {printf("%stest_%s", sep, $i); sep="|";}}')"')$'
+    all_tests="$(echo "${all_tests}" | egrep "${regex}")"
+fi
+
+eval "${source}"
+
+success=true
+
+for function_name in ${all_tests}
+do
+    test_name="$(echo "${function_name}" | sed -e 's/^test_//g')"
+
+    if ! "${function_name}"
+    then
+        logging::info "${function_name}=fail"
+        success=false
+    else
+        logging::info "${function_name}=success"
+    fi
+done
+
+exec $success
