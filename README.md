@@ -1,4 +1,4 @@
-# suites - A reference counting process group supervisor
+# Webserve - An http server and framework in bash
 
 ## Synopsis
 
