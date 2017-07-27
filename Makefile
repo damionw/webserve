@@ -22,7 +22,7 @@ install: tests
 build:
 	@install -d build/bin $(BUILD_SHARE_PATH)/examples
 
-tests: build
+tests: all
 	@PATH="$(shell readlink -f build/bin):$(PATH)" unittests/testsuite
 
 clean:
