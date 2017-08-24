@@ -89,7 +89,7 @@ header::access_control() {
 #                                TCP/IP
 #===================================================================================
 tcp::available_ports() {
-    start_port=${1:-9000}
+    start_port=${1:-10000}
     protocol=${2:-tcp}
 
     address_family=$(echo ${protocol}4 | sed -e 's/^[^0-9]*//g' | dd bs=1 count=1 2>/dev/null)
@@ -222,6 +222,7 @@ http::response_file() {
     local _method="${1}"
     local _request="${2}"
     local _headers="${3}"
+    local _content="${4}"
     local _filename="${_SERVER_STATIC}/$(basename "${_request}")"
     local _extension="$(echo "${_filename}" | awk -F. '{print $NF;}' | tr '[A-Z]' '[a-z]')"
 
@@ -263,6 +264,7 @@ http::response_script() {
     local _method="${1}"
     local _request="${2}"
     local _headers="${3}"
+    local _content="${4}"
     local _action="$(basename "${_request}")"
     local _filename="${_SERVER_API}/${_action}"
 
@@ -295,13 +297,12 @@ http::handle_request() {
 
     logging::info "${_method}" "${_request}"
 
-    # Fetch incoming headers
-    local _headers="$(
-        while read -t 0.01 _row
-        do
-            echo "${_row}"
-        done | sed -e 's/\r//g' -e '/^[ ]*$/d'
-    )"
+    # Fetch incoming data & elide carriage returns
+    local _all="$(timeout 0.5 cat | sed -e 's/\r//g')"
+
+    # Separate headers and content
+    local _headers="$(echo "${_all}" | awk '/^$/ {exit;} {print $0;}')"
+    local _content="$(echo "${_all}" | awk '/^$/ {start=NR;} {if (start > 0 && NR > start) {print $0;}}' start=0)"
 
     http::url_mappings
 
@@ -311,7 +312,8 @@ http::handle_request() {
         return 255
     fi
 
-    "${_handler:-"http::404_error"}" "${_method}" "${_request}" "${_headers}"
+    # Call the handler with <method> <request> <headers> <content>
+    "${_handler:-"http::404_error"}" "${_method}" "${_request}" "${_headers}" "${_content}"
 }
 
 http::run_server() {
