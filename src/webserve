@@ -3,7 +3,7 @@
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.01
+VERSION=0.02
 
 #===================================================================================
 #                              Response Functions
@@ -260,6 +260,25 @@ http::response_file() {
     esac < "${_filename}"
 }
 
+http::response_api_catalog() {
+    listify() {
+        sort -n |
+        awk 'BEGIN {print "[";} {printf("%s%s", sep, $0); sep=",";} END {print "]";}'
+    }
+
+    local _api_folder="${_SERVER_API}"
+
+    if ! [ -n "${_api_folder}" -a -d "${_api_folder}" ]
+    then
+        http::404_error
+        return
+    fi
+
+    find "${_api_folder}" -mindepth 1 -maxdepth 1 -type f -printf '"%f"\n' |
+    listify |
+    http::response_json
+}
+
 http::response_script() {
     local _method="${1}"
     local _request="${2}"
@@ -347,6 +366,7 @@ http::url_mappings() {
 
     if [ -n "${_SERVER_API}" -a -d "${_SERVER_API}" ]
     then
+        url::add_handler '^\/api\/*$'  GET http::response_api_catalog
         url::add_handler '^\/api\/.*$' GET http::response_script
     fi
 }
