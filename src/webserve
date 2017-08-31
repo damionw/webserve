@@ -3,7 +3,7 @@
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.02
+VERSION=0.03
 
 #===================================================================================
 #                              Response Functions
@@ -338,6 +338,9 @@ http::handle_request() {
 http::run_server() {
     local _shell="$(which bash)"
     local _port="${1}"
+    shift
+
+    local address_spec=$(for address in ${*}; do echo --allow ${address}; done)
 
     if [ -z "${_port}" ]
     then
@@ -350,7 +353,7 @@ http::run_server() {
         -l ${_port} \
         --max-conns 12 \
         --keep-open \
-        --allow 127.0.0.1 \
+        ${address_spec} \
         --sh-exec "'${_shell}' -c '. \"${_SERVER_SCRIPT}\"; http::handle_request'"
 }
 
@@ -421,7 +424,7 @@ showhelp()
 
                 if ($i ~ /[:]$/)
                 {
-                    parameter=substr($i, 0, length($i) - 1);
+                    parameter=substr($i, 0, length($i));
                     value=sprintf("=<%s>", parameter);
                 }
 
@@ -438,7 +441,7 @@ showhelp()
 #       will cause the first non option parameter to be discarded. Here, we just
 #       use -h (help)
 #===================================================================================
-long_options="api:,static:,help,port:,module:,version"
+long_options="api:,static:,help,port:,address:,module:,version"
 
 OPTION_TEMP=$(getopt -a -o hva:s:p:m: --long ${long_options} -- "$@")
 
@@ -462,6 +465,7 @@ export _SERVER_API=
 export _SERVER_MODULES=
 
 listener_port=$(tcp::get_unused_port)
+listener_addresses=("127.0.0.1")
 
 while true
 do
@@ -469,6 +473,11 @@ do
         --version|-v)
             echo "${VERSION}"
             exit 0
+            ;;
+
+        --address)
+            listener_addresses[${#listener_addresses[*]}]="$2"
+            shift 2
             ;;
 
         --port|-p)
@@ -506,4 +515,4 @@ done
 #===================================================================================
 #                 Run server with options and setting context
 #===================================================================================
-_IN_SERVER_REQUEST_HANDLER=true http::run_server "${listener_port}"
+_IN_SERVER_REQUEST_HANDLER=true http::run_server "${listener_port}" ${listener_addresses[*]}
