@@ -340,7 +340,12 @@ http::run_server() {
     local _port="${1}"
     shift
 
-    local address_spec=$(for address in ${*}; do echo --allow ${address}; done)
+    local address_spec=$(
+        echo $* |
+        sed -e 's/[ ]/\n/g' |
+        sort -u |
+        awk '{printf("%s--allow %s", sep, $1); sep=" ";}'
+    )
 
     if [ -z "${_port}" ]
     then
@@ -422,7 +427,7 @@ showhelp()
 #       will cause the first non option parameter to be discarded. Here, we just
 #       use -h (help)
 #===================================================================================
-long_options="api:,static:,help,port:,address:,module:,version"
+long_options="api:,static:,help,port:,address:,allow:,module:,version"
 
 OPTION_TEMP=$(getopt -a -o hva:s:p:m: --long ${long_options} -- "$@")
 
@@ -456,7 +461,7 @@ do
             exit 0
             ;;
 
-        --address)
+        --address|--allow)
             listener_addresses[${#listener_addresses[*]}]="$2"
             shift 2
             ;;
