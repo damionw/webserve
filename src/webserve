@@ -408,32 +408,13 @@ fi
 #===================================================================================
 showhelp()
 {
-    long_options=${*}
+    contents=$(
+        echo "${*}" |
+        awk -F, '{for (i=1; i <= NF; ++i) {print $i;}}' |
+        awk -F: '{printf("%s[--%s%s]", sep, $1, (NF == 2 ? sprintf("=<%s>", $1) : "")); sep=" "}'
+    )
 
-    show_options()
-    {
-        convert_to_one_liner()
-        {
-            sed -e 's/^[ ]*//g' -e '/^$/d' | tr '\n' ' '
-        }
-
-        echo "${long_options}" | awk -F, '{
-            for (i=1; i <= NF; ++i){
-                parameter=$i;
-                value="";
-
-                if ($i ~ /[:]$/)
-                {
-                    parameter=substr($i, 0, length($i));
-                    value=sprintf("=<%s>", parameter);
-                }
-
-                printf("[--%s%s]\n", parameter, value);
-            }
-        }' | convert_to_one_liner
-    }
-
-    echo "Usage: $0 $(show_options)" >&2
+    echo "Usage: $0 ${contents}" >&2
 }
 
 #===================================================================================
