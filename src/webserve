@@ -354,7 +354,7 @@ http::run_server() {
 
     logging::info "Starting webserver on port ${_port} with static folder '${_SERVER_STATIC}'"
 
-    exec ncat \
+    NCAT_LOCAL_ADDR="$(hostname)" NCAT_LOCAL_PORT=${_port} exec ncat \
         -l ${_port} \
         --max-conns 12 \
         --keep-open \
