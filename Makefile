@@ -1,6 +1,6 @@
 PACKAGE_NAME := Webserve
 BUILD_SHARE_PATH := build/share/$(PACKAGE_NAME)
-INSTALL_PATH := /usr/local
+INSTALL_PATH := $(shell pythonx -c 'import sys; print sys.prefix if hasattr(sys, "real_prefix") else exit(255)' 2>/dev/null || echo "/usr/local")
 
 .PHONY: tests clean
 
