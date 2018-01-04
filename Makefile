@@ -1,6 +1,6 @@
 PACKAGE_NAME := Webserve
 BUILD_SHARE_PATH := build/share/$(PACKAGE_NAME)
-INSTALL_PATH := /usr/local
+INSTALL_PATH := $(shell python -c 'import sys; print sys.prefix if hasattr(sys, "real_prefix") else exit(255)' 2>/dev/null || echo "/usr/local")
 
 .PHONY: tests clean
 
@@ -17,7 +17,11 @@ demo: all
 		--port=11111
 
 install: tests
+	@echo "Installing into directory '$(INSTALL_PATH)'"
 	@rsync -az build/ $(INSTALL_PATH)/
+
+version: all
+	@build/bin/webserve --version
 
 build:
 	@install -d build/bin $(BUILD_SHARE_PATH)/examples
