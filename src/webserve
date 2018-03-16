@@ -253,7 +253,7 @@ http::response_file() {
             response::set_status 200 "HTTP/1.1"
             header::server_type
             header::content_type "$(file -b --mime-type "${_filename}")"
-            header::content_length "$(stat -c'%s' "${_filename}")"
+            # header::content_length "$(wc -c < "${_filename}")"
             header::access_control '*'
             response::send
             ;;
