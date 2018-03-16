@@ -26,11 +26,8 @@ response::set_status() {
 
 response::send() {
     # Response content comes in via stdin
-    {
-        response::get_headers
-        echo
-        cat
-    } | sed -e 's/$/\r/'
+    (response::get_headers; echo) | sed -e 's/$/\r/'
+    cat
 }
 
 response::add_header() {
