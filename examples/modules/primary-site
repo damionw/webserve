@@ -4,7 +4,12 @@ http::primary::response_index() {
     http::response_file GET index.html "${3}" # Pass back the original headers
 }
 
+http::primary::response_primary_folder() {
+    http::response_directory_listing "${_SERVER_STATIC}" /files
+}
+
 http::primary::url_mappings() {
     url::add_handler '^\/$' GET http::primary::response_index
     url::add_handler '^\/index.html$' GET http::primary::response_index
+    url::add_handler '^\/files$' GET http::primary::response_primary_folder
 }

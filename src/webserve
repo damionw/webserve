@@ -3,7 +3,7 @@
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.03
+VERSION=0.04
 
 #===================================================================================
 #                              Response Functions
@@ -255,6 +255,59 @@ http::response_file() {
             response::send
             ;;
     esac < "${_filename}"
+}
+
+http::response_directory_listing() {
+    local _folder="${1}"
+    local _urlpath="${2}"
+
+    {
+        sed -e 's/^            //g' <<< '
+            <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+            <html>
+            <head>
+            <title>Index of '"${_urlpath}"'</title>
+            </head>
+            <body>
+            <h1>Index of '"${_urlpath}"'</h1>
+            <table>
+        '
+
+        # Header
+        sed -e 's/^            //g' <<< '
+            <tr>
+                <th valign="top"><img src="/icons/blank.gif" alt="[ICO]"></th>
+                <th>Name</th>
+                <th>Last modified</th>
+                <th>Size</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <th colspan="5"><hr></th>
+            </tr>
+        '
+
+        #Parent directory
+        sed -e 's/^            //g' <<< '
+            <tr>
+                <td valign="top"><img src="/icons/back.gif" alt="[PARENTDIR]"></td>
+                <td><a href="'"$(dirname "${_urlpath}")"'">Parent Directory</a></td>
+                <td>&nbsp;</td>
+                <td align="right">  - </td>
+                <td>&nbsp;</td>
+            </tr>
+        '
+
+        ls -1 "${_folder}" | while read _filename
+        do
+            :
+        done
+
+        sed -e 's/^            //g' <<< '
+            </table>
+            </body></html>
+        '
+    } | http::response_html 
 }
 
 http::response_api_catalog() {
