@@ -261,52 +261,91 @@ http::response_directory_listing() {
     local _folder="${1}"
     local _urlpath="${2}"
 
+    HTML_TEMPLATE='
+        <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+        <html>
+        <head>
+        <title>Index of __PATH_URL__</title>
+        </head>
+        <body>
+        <h1>Index of __PATH_URL__</h1>
+        <table>
+        __HEADER__
+        __PARENT__
+        __ENTRIES__
+        </table>
+        </body></html>
+    '
+
+    HEADER_TEMPLATE='
+        <tr>
+            <th valign="top"></th>
+            <th>Name</th>
+            <th>Last modified</th>
+            <th>Size</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <th colspan="5"><hr></th>
+        </tr>
+    '
+
+    PARENT_TEMPLATE='
+        <tr>
+            <td valign="top"><img src="__ICON_URL__" alt="[PARENTDIR]"></td>
+            <td><a href="__PARENT_URL__">Parent Directory</a></td>
+            <td>&nbsp;</td>
+            <td align="right">  - </td>
+            <td>&nbsp;</td>
+        </tr>
+    '
+
+    ENTRY_TEMPLATE='
+        <tr>
+            <td valign="top"><img src="__ICON_URL__" alt="[DIR]"></td>
+            <td><a href="__PATH_URL__/__NAME__">__NAME__</a></td>
+            <td align="right">__DATE__</td>
+            <td align="right">__SIZE__</td>
+            <td>&nbsp;</td>
+        </tr>
+    '
+
     {
-        sed -e 's/^            //g' <<< '
-            <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
-            <html>
-            <head>
-            <title>Index of '"${_urlpath}"'</title>
-            </head>
-            <body>
-            <h1>Index of '"${_urlpath}"'</h1>
-            <table>
-        '
+        sed -e 's/^        //g' <<< "${HTML_TEMPLATE}" | m4 --prefix-builtins \
+            -D__PATH_URL__="${_urlpath}" \
+            -D__HEADER__="$(
+                echo "${HEADER_TEMPLATE}" | m4 --prefix-builtins
+            )" \
+            -D__PARENT__="$(
+                echo "${PARENT_TEMPLATE}" | m4 --prefix-builtins \
+                    -D__PARENT_URL__="$(dirname "${_urlpath}")" \
+                    -D__ICON_URL__="${iconurl}/back.png"
+            )" \
+            -D__ENTRIES__="$(
+                find "${_folder}" -maxdepth 1 -mindepth 1 -printf "%Y %s %TY-%Tm-%Td %TH:%TM %f\n" | while read _type _size _date _time _name
+                do
+                    local mime="$(
+                        case "${_type}" in
+                            d)
+                                echo "folder"
+                                ;;
+                            f)
+                                echo "document"
+                                ;;
+                            *)
+                                echo "document"
+                                ;;
+                        esac
+                    )"
 
-        # Header
-        sed -e 's/^            //g' <<< '
-            <tr>
-                <th valign="top"><img src="/icons/blank.gif" alt="[ICO]"></th>
-                <th>Name</th>
-                <th>Last modified</th>
-                <th>Size</th>
-                <th>Description</th>
-            </tr>
-            <tr>
-                <th colspan="5"><hr></th>
-            </tr>
-        '
-
-        #Parent directory
-        sed -e 's/^            //g' <<< '
-            <tr>
-                <td valign="top"><img src="/icons/back.gif" alt="[PARENTDIR]"></td>
-                <td><a href="'"$(dirname "${_urlpath}")"'">Parent Directory</a></td>
-                <td>&nbsp;</td>
-                <td align="right">  - </td>
-                <td>&nbsp;</td>
-            </tr>
-        '
-
-        ls -1 "${_folder}" | while read _filename
-        do
-            :
-        done
-
-        sed -e 's/^            //g' <<< '
-            </table>
-            </body></html>
-        '
+                    echo "${ENTRY_TEMPLATE}" | m4 --prefix-builtins \
+                        -D__PATH_URL__="${_urlpath}" \
+                        -D__DATE__="${_date} ${_time}" \
+                        -D__SIZE__="${_size}" \
+                        -D__NAME__="${_name}" \
+                        -D__ICON_URL__="${iconurl}/${mime}.png"
+                done
+            )"
     } | http::response_html 
 }
 
