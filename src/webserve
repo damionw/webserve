@@ -260,6 +260,7 @@ http::response_file() {
 http::response_directory_listing() {
     local _folder="${1}"
     local _urlpath="${2}"
+    local _iconurl="${3}"
 
     HTML_TEMPLATE='
         <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
@@ -319,7 +320,7 @@ http::response_directory_listing() {
             -D__PARENT__="$(
                 echo "${PARENT_TEMPLATE}" | m4 --prefix-builtins \
                     -D__PARENT_URL__="$(dirname "${_urlpath}")" \
-                    -D__ICON_URL__="${iconurl}/back.png"
+                    -D__ICON_URL__="${_iconurl}/back.png"
             )" \
             -D__ENTRIES__="$(
                 find "${_folder}" -maxdepth 1 -mindepth 1 -printf "%Y %s %TY-%Tm-%Td %TH:%TM %f\n" | while read _type _size _date _time _name
@@ -343,7 +344,7 @@ http::response_directory_listing() {
                         -D__DATE__="${_date} ${_time}" \
                         -D__SIZE__="${_size}" \
                         -D__NAME__="${_name}" \
-                        -D__ICON_URL__="${iconurl}/${mime}.png"
+                        -D__ICON_URL__="${_iconurl}/${mime}.png"
                 done
             )"
     } | http::response_html 

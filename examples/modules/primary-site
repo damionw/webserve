@@ -5,11 +5,46 @@ http::primary::response_index() {
 }
 
 http::primary::response_primary_folder() {
-    http::response_directory_listing "${_SERVER_STATIC}" /files
+    http::response_directory_listing "${_SERVER_STATIC}" /files /icons
+}
+
+http::primary::response_icon() {
+    local _method="${1}"
+    local _request="${2}"
+    local _headers="${3}"
+    local _content="${4}"
+    local _filename="$(basename "${_request}" | sed -e 's/[\.][^\.]*$//g')"
+
+    case "${_filename}" in
+        folder|document|back)
+            _filename="${HOME}/Images/${_filename}.png"
+            ;;
+
+        *)
+            _filename="/does/not/exist/dummy.nothing"
+            ;;
+    esac
+
+    if [ ! -f "${_filename}" ]
+    then
+        http::404_error
+        return 255
+    fi
+
+    {
+        response::set_status 200 "HTTP/1.1"
+        header::server_type
+        header::content_type "$(file -b --mime-type "${_filename}")"
+        # header::content_length "$(wc -c < "${_filename}")"
+        header::access_control '*'
+        response::send
+    } < "${_filename}"
+
 }
 
 http::primary::url_mappings() {
     url::add_handler '^\/$' GET http::primary::response_index
     url::add_handler '^\/index.html$' GET http::primary::response_index
     url::add_handler '^\/files$' GET http::primary::response_primary_folder
+    url::add_handler '^\/icons\/[^\/]*$' GET http::primary::response_icon
 }
