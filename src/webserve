@@ -1,4 +1,4 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
 
 #===================================================================================
 #                                  Constants
@@ -220,7 +220,7 @@ http::response_file() {
     local _request="${2}"
     local _headers="${3}"
     local _content="${4}"
-    local _filename="${_SERVER_STATIC}/$(basename "${_request}")"
+    local _filename="${5:-_SERVER_STATIC}/$(basename "${_request}")"
     local _extension="$(echo "${_filename}" | awk -F. '{print $NF;}' | tr '[A-Z]' '[a-z]')"
 
     if [ ! -f "${_filename}" ]
@@ -259,8 +259,14 @@ http::response_file() {
 
 http::response_directory_listing() {
     local _folder="${1}"
-    local _urlpath="${2}"
-    local _iconurl="${3}"
+    local _urlpath="${2:-/}"
+    local _iconurl="${_urlpath}/icons"
+
+    if [ ! -d "${_folder}" ]
+    then
+        http::404_error
+        return 255
+    fi
 
     HTML_TEMPLATE='
         <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">

@@ -1,50 +1,64 @@
-#! /usr/bin/env bash
+#!/usr/bin/env bash
 
+http::primary::response_location() {
+    echo "${HOME}/Documents"
+}
+
+http::primary::response_urlroot() {
+    echo "/files"
+}
 http::primary::response_index() {
     http::response_file GET index.html "${3}" # Pass back the original headers
 }
 
 http::primary::response_primary_folder() {
-    http::response_directory_listing "${_SERVER_STATIC}" /files /icons
-}
-
-http::primary::response_icon() {
     local _method="${1}"
     local _request="${2}"
     local _headers="${3}"
     local _content="${4}"
-    local _filename="$(basename "${_request}" | sed -e 's/[\.][^\.]*$//g')"
 
-    case "${_filename}" in
-        folder|document|back)
-            _filename="${HOME}/Images/${_filename}.png"
-            ;;
+    local _base="$(http::primary::response_urlroot)"
+    local _regex="$(echo "${_base}" | sed -e 's/\//\\\//g')"
+    local _root="$(echo "${_request}" | sed -e "s/^${_regex}//g" -e 's/[\/][\/]/\//g')"
 
-        *)
-            _filename="/does/not/exist/dummy.nothing"
-            ;;
-    esac
+    local _path="$(http::primary::response_location)${_root:+/}/${_root}"
+    local _url="$(http::primary::response_urlroot)${_root:+/}${_root}"
 
-    if [ ! -f "${_filename}" ]
-    then
-        http::404_error
-        return 255
-    fi
+    logging::info "[${_path}] [${_url}]"
+    http::response_directory_listing "${_path}" "${_url}"
+}
 
-    {
-        response::set_status 200 "HTTP/1.1"
-        header::server_type
-        header::content_type "$(file -b --mime-type "${_filename}")"
-        # header::content_length "$(wc -c < "${_filename}")"
-        header::access_control '*'
-        response::send
-    } < "${_filename}"
+http::primary::response_primary_file() {
+    local _method="${1}"
+    local _request="${2}"
+    local _headers="${3}"
+    local _content="${4}"
 
+    local _base="$(http::primary::response_urlroot)"
+    local _regex="$(echo "${_base}" | sed -e 's/\//\\\//g')"
+    local _root="$(echo "${_request}" | sed -e "s/^${_regex}//g" -e 's/[\/][\/]/\//g')"
+
+    local _path="$(http::primary::response_location)${_root:+/}/${_root}"
+    local _url="$(http::primary::response_urlroot)${_root:+/}${_root}"
+
+    http::response_file "${1}" "${2}" "${3}" "${4}" "${_path}"
+}
+
+http::primary::response_primary_icon() {
+    http::response_file "${1}" "${2}" "${3}" "${4}" "${HOME}/Images"
 }
 
 http::primary::url_mappings() {
     url::add_handler '^\/$' GET http::primary::response_index
     url::add_handler '^\/index.html$' GET http::primary::response_index
-    url::add_handler '^\/files$' GET http::primary::response_primary_folder
-    url::add_handler '^\/icons\/[^\/]*$' GET http::primary::response_icon
+    url::add_handler '^\/files[\/]*$' GET http::primary::response_primary_folder
+
+    # Handle the folder mappings
+    while read _path _file
+    do
+        url::add_handler '^\/files\/'"${_file}"'[\/]*$' GET http::primary::response_primary_folder
+    done <<< "$(find "$(http::primary::response_location)" -maxdepth 1 -mindepth 1 -type d -printf "%h %f\n")"
+
+    url::add_handler '^\/files[\/]*.*[\/]icons\/[^\/]*$' GET http::primary::response_primary_icon
+    url::add_handler '^\/files\/[^\/]*[\/]*$' GET http::primary::response_primary_file
 }
