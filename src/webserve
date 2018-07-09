@@ -3,7 +3,7 @@
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.04
+VERSION=0.05
 
 #===================================================================================
 #                              Response Functions
@@ -413,11 +413,31 @@ http::handle_request() {
     logging::info "${_method}" "${_request}"
 
     # Fetch incoming data & elide carriage returns
-    local _all="$(timeout 0.5 cat | sed -e 's/\r//g')"
+    local _all="$(
+        timeout 3.0s cat
+    )"
 
-    # Separate headers and content
-    local _headers="$(echo "${_all}" | awk '/^$/ {exit;} {print $0;}')"
-    local _content="$(echo "${_all}" | awk '/^$/ {start=NR;} {if (start > 0 && NR > start) {print $0;}}' start=0)"
+    # Find edge between headers and content
+    local _offset="$(
+        echo "${_all}" |
+        hexdump -v -e '/1 "%02X "' |
+        sed -e 's/\(0D 0A 0D 0A \).*$/\1/g' |
+        sed -e 's/ /\n/g' |
+        wc -l
+    )"
+
+    # Grab the headers, removing CR characters
+    local _headers="$(
+        echo "${_all}" |
+        dd bs=1 count=$((_offset)) status=noxfer 2>/dev/null |
+        sed -e 's/\r//g'
+    )"
+
+    # Grab the content, unmolested
+    local _content="$(
+        echo "${_all}" |
+        dd bs=1 skip=$((_offset)) status=noxfer 2>/dev/null
+    )"
 
     http::url_mappings
 

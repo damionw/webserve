@@ -14,6 +14,7 @@ demo: all
 		--api=$(BUILD_SHARE_PATH)/examples/api \
 		--module=$(BUILD_SHARE_PATH)/examples/modules/primary-site \
 		--module=$(BUILD_SHARE_PATH)/examples/modules/demo1 \
+		--module=$(BUILD_SHARE_PATH)/examples/modules/postit \
 		--port=11111
 
 install: tests

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+http::postit::response_post() {
+    local _method="${1}"
+    local _request="${2}"
+    local _headers="${3}"
+    local _content="${4}"
+
+    echo "${_content}" | http::response_plain
+}
+
+http::postit::url_mappings() {
+    url::add_handler '^\/post$' POST http::postit::response_post
+}
