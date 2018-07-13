@@ -7,7 +7,7 @@ http::postit::response_post() {
     local _content="${4}"
     local _b64_content="${5}"
 
-    echo "${_b64_content}" | base64 --decode | tee /tmp/dkwtest.raw | http::response_octet_stream
+    echo "${_b64_content}" | base64 --decode | http::response_octet_stream
 }
 
 http::postit::url_mappings() {
