@@ -3,7 +3,7 @@
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.05
+VERSION=0.06
 
 #===================================================================================
 #                              Response Functions
@@ -55,6 +55,10 @@ header::text_html() {
 
 header::text_plain() {
     header::content_type "text/plain; charset=utf-8"
+}
+
+header::application_octet_stream() {
+    header::content_type application/octet-stream
 }
 
 header::application_json() {
@@ -197,6 +201,14 @@ http::response_css() {
     response::set_status 200 "HTTP/1.1"
     header::server_type
     header::text_css
+    response::send
+}
+
+http::response_octet_stream() {
+    response::set_status 200 "HTTP/1.1"
+    header::server_type
+    header::application_octet_stream
+    header::access_control '*'
     response::send
 }
 
@@ -392,6 +404,7 @@ http::response_script() {
 }
 
 http::handle_request() {
+    # Initialize the reply headers collection
     headers=(
         "HTTP/1.1 200 OK"
     )
@@ -402,24 +415,22 @@ http::handle_request() {
     local _request
     local _version
     local _handler
-    local _row
 
-    if ! read _method _request _version
-    then
-        http::400_error
-        return 255
-    fi
-
-    logging::info "${_method}" "${_request}"
-
-    # Fetch incoming data & elide carriage returns
-    local _all="$(
-        timeout 3.0s cat
+    # WARNING: We hold the contents in base64 because bash variables (C strings)
+    # cannot hold null bytes
+    local _store="$(
+        while true
+        do
+            _block="$(timeout 1.0s dd bs=1 count=1024 2>/dev/null | base64)"
+            test -z "${_block}" && break
+            echo -n "${_block}"
+        done
     )"
 
     # Find edge between headers and content
     local _offset="$(
-        echo "${_all}" |
+        echo -ne "${_store}" |
+        base64 --decode |
         hexdump -v -e '/1 "%02X "' |
         sed -e 's/\(0D 0A 0D 0A \).*$/\1/g' |
         sed -e 's/ /\n/g' |
@@ -427,28 +438,53 @@ http::handle_request() {
     )"
 
     # Grab the headers, removing CR characters
-    local _headers="$(
-        echo "${_all}" |
-        dd bs=1 count=$((_offset)) status=noxfer 2>/dev/null |
+    local _preamble="$(
+        echo -n "${_store}" |
+        base64 --decode |
+        dd bs=1024 count=${_offset} 2>/dev/null |
         sed -e 's/\r//g'
     )"
 
-    # Grab the content, unmolested
-    local _content="$(
-        echo "${_all}" |
-        dd bs=1 skip=$((_offset)) status=noxfer 2>/dev/null
-    )"
+    if ! read _method _request _version <<< "${_preamble}"
+    then
+        http::400_error
+        return 255
+    fi
 
+    logging::info "[${_method}] [${_request}] [${_version}]"
+
+    # Register the regexes and callbacks
     http::url_mappings
 
+    # Find the appropriate handler
     if ! _handler="$(url::match_handler "${_method}" "${_request}")"
     then
         http::404_error
         return 255
     fi
 
-    # Call the handler with <method> <request> <headers> <content>
-    "${_handler:-"http::404_error"}" "${_method}" "${_request}" "${_headers}" "${_content}"
+    # Grab the content in base64 format
+    local _b64_content="$(
+        echo -n "${_store}" |
+        base64 --decode |
+        dd bs=1 skip=${_offset} 2>/dev/null |
+        base64
+    )"
+
+    # Convert content to plain form.
+    # WARNING: bash variables elide null bytes
+    local _content="$(
+        echo -n "${_b64_content}" |
+        base64 --decode
+    )"
+
+    local _headers="$(
+        echo "${_preamble}" |
+        tail --lines=+2
+    )"
+
+    # Call the handler with <method> <request> <headers> <content> <base64 content>
+    "${_handler:-"http::404_error"}" "${_method}" "${_request}" "${_headers}" "${_content}" "${_b64_content}"
 }
 
 http::run_server() {
@@ -475,7 +511,7 @@ http::run_server() {
         --max-conns 12 \
         --keep-open \
         ${address_spec} \
-        --sh-exec "'${_shell}' -c '. \"${_SERVER_SCRIPT}\"; http::handle_request'"
+        --sh-exec "'${_shell}' -c '. \"${_SERVER_SCRIPT}\" </dev/null >/dev/null 2>&1; http::handle_request'"
 }
 
 http::url_mappings() {

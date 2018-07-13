@@ -5,8 +5,9 @@ http::postit::response_post() {
     local _request="${2}"
     local _headers="${3}"
     local _content="${4}"
+    local _b64_content="${5}"
 
-    echo "${_content}" | http::response_plain
+    echo "${_b64_content}" | base64 --decode | tee /tmp/dkwtest.raw | http::response_octet_stream
 }
 
 http::postit::url_mappings() {
