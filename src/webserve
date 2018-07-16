@@ -419,10 +419,18 @@ http::handle_request() {
     # WARNING: We hold the contents in base64 because bash variables (C strings)
     # cannot hold null bytes
     local _store="$(
+        local _retries=1
+
         while true
         do
-            _block="$(timeout 1.0s dd bs=1 count=1024 2>/dev/null | base64)"
-            test -z "${_block}" && break
+            _block="$(timeout 0.5s dd bs=1 count=1024 2>/dev/null | base64)"
+
+            if [ -z "${_block}" ]
+            then
+                test "${_retries}" -le 0 && break
+                ((--_retries))
+            fi
+
             echo -n "${_block}"
         done
     )"
