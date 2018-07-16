@@ -423,7 +423,7 @@ http::handle_request() {
 
         while true
         do
-            _block="$(timeout 0.5s dd bs=1 count=1024 2>/dev/null | base64)"
+            _block="$(timeout 3.0s dd bs=1 count=1024 2>/dev/null | base64)"
 
             if [ -z "${_block}" ]
             then
