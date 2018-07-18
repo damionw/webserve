@@ -3,7 +3,7 @@
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.06
+VERSION=0.07
 
 #===================================================================================
 #                              Response Functions
@@ -416,26 +416,17 @@ http::handle_request() {
     local _version
     local _handler
 
-    # WARNING: We hold the contents in base64 because bash variables (C strings)
-    # cannot hold null bytes
-    local _store="$(
-        local _retries=1
+    local _store _block
 
-        while true
-        do
-            _block="$(timeout 3.0s dd bs=1 count=1024 2>/dev/null | base64)"
+    while true
+    do
+        # WARNING: We hold the contents as base64 because bash variables (C strings) cannot hold null bytes
+        _block="$(timeout 0.5s dd bs=1024 count=1 2>/dev/null | base64)"
+        test -z "${_block}" && break
+        _store="${_store}${_block}"
+    done
 
-            if [ -z "${_block}" ]
-            then
-                test "${_retries}" -le 0 && break
-                ((--_retries))
-            fi
-
-            echo -n "${_block}"
-        done
-    )"
-
-    # Find edge between headers and content
+    # Find edge between headers and content by parsing characters in hex notation
     local _offset="$(
         echo -ne "${_store}" |
         base64 --decode |
@@ -449,7 +440,7 @@ http::handle_request() {
     local _preamble="$(
         echo -n "${_store}" |
         base64 --decode |
-        dd bs=1024 count=${_offset} 2>/dev/null |
+        dd bs=1 count=${_offset} 2>/dev/null |
         sed -e 's/\r//g'
     )"
 
