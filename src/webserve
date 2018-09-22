@@ -417,12 +417,14 @@ http::handle_request() {
     local _handler
 
     local _store _block
+    local _count=0
 
     while true
     do
         # WARNING: We hold the contents as base64 because bash variables (C strings) cannot hold null bytes
-        _block="$(timeout 0.5s dd bs=1024 count=1 2>/dev/null | base64)"
-        test -z "${_block}" && break
+        _block="$(timeout 1.0s dd bs=4096 count=1 2>/dev/null | base64)"
+        test -z "${_block}" -a $_count -gt 2 && break
+        ((++_count))
         _store="${_store}${_block}"
     done
 
@@ -483,7 +485,7 @@ http::handle_request() {
     )"
 
     # Call the handler with <method> <request> <headers> <content> <base64 content>
-    "${_handler:-"http::404_error"}" "${_method}" "${_request}" "${_headers}" "${_content}" "${_b64_content}" | stdbuf --output=0 cat &&sleep 1
+    "${_handler:-"http::404_error"}" "${_method}" "${_request}" "${_headers}" "${_content}" "${_b64_content}" | stdbuf --output=0 cat && sleep 1
 }
 
 http::run_server() {
