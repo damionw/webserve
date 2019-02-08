@@ -3,7 +3,7 @@
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.10
+VERSION=0.11
 
 #===================================================================================
 #                              Response Functions
@@ -116,6 +116,21 @@ tcp::available_ports() {
 
 tcp::get_unused_port() {
     tcp::available_ports $* | (read row && echo $row)
+}
+
+tcp::is_inet_address() {
+    echo "${1}" | grep -Eq '^[0-9]{1,3}([\.][0-9]{1,3}){0,3}[\.]{0,1}$'
+}
+
+tcp::host_to_inet_address() {
+    local _addr="${1:?Need inet address/hostname}"
+
+    if ! tcp::is_inet_address "${_addr}"
+    then
+        _addr="$(dig +noall +answer +search +short gpstest-dkw "${_addr}")"
+    fi
+
+    test -n "${_addr}" && echo "${_addr}"
 }
 
 #===================================================================================
@@ -501,8 +516,12 @@ http::run_server() {
         tcprules "${_cdb}" "${_cdb}.tmp" <<< "$(
             for _addr in "$@"
             do
-                echo "${_addr}:allow"
+                if _addr="$(tcp::host_to_inet_address "${_addr}")"
+                then
+                    echo "${_addr}:allow"
+                fi
             done
+
             echo ":deny"
         )"
     fi
