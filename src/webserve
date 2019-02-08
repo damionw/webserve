@@ -127,7 +127,7 @@ tcp::host_to_inet_address() {
 
     if ! tcp::is_inet_address "${_addr}"
     then
-        _addr="$(dig +noall +answer +search +short gpstest-dkw "${_addr}")"
+        _addr="$(dig +noall +answer +search +short "${_addr}")"
     fi
 
     test -n "${_addr}" && echo "${_addr}"
@@ -540,7 +540,7 @@ http::run_server() {
         ${_logging_level} \
         -dH \
         -c 12 \
-        ${_cdb:+-x} ${_cdb}\
+        ${_cdb:+-x} ${_cdb} \
         -b 4 \
         0 \
         "${_port}" \
