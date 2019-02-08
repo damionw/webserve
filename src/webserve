@@ -540,7 +540,7 @@ http::run_server() {
         ${_logging_level} \
         -dH \
         -c 12 \
-        ${_cdb:+-x} ${_cdb} ${_cdb:+-X}\
+        ${_cdb:+-x} ${_cdb}\
         -b 4 \
         0 \
         "${_port}" \
