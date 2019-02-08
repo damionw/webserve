@@ -3,7 +3,7 @@
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.09
+VERSION=0.10
 
 #===================================================================================
 #                              Response Functions
@@ -232,7 +232,7 @@ http::response_file() {
     local _request="${2}"
     local _headers="${3}"
     local _content="${4}"
-    local _filename="${5:-_SERVER_STATIC}/$(basename "${_request}")"
+    local _filename="${5:-${_SERVER_STATIC}}/$(basename "${_request}")"
     local _extension="$(echo "${_filename}" | awk -F. '{print $NF;}' | tr '[A-Z]' '[a-z]')"
 
     if [ ! -f "${_filename}" ]
@@ -490,15 +490,22 @@ http::handle_request() {
 
 http::run_server() {
     local _shell="$(which bash)"
-    local _port="${1}"
-    shift
+    local _port="${1}" && shift
+    local _cdb=
+    local _addr
 
-    local address_spec=$(
-        echo $* |
-        sed -e 's/[ ]/\n/g' |
-        sort -u |
-        awk '{printf("%s--allow %s", sep, $1); sep=" ";}'
-    )
+    if [ "$#" -gt 0 ]
+    then
+        _cdb="$(mktemp -q --suffix=.cdb)"
+
+        tcprules "${_cdb}" "${_cdb}.tmp" <<< "$(
+            for _addr in "$@"
+            do
+                echo "${_addr}:allow"
+            done
+            echo ":deny"
+        )"
+    fi
 
     if [ -z "${_port}" ]
     then
@@ -507,12 +514,18 @@ http::run_server() {
 
     logging::info "Starting webserver on port ${_port} with static folder '${_SERVER_STATIC}'"
 
-    NCAT_LOCAL_ADDR="$(hostname)" NCAT_LOCAL_PORT=${_port} exec ncat \
-        -l ${_port} \
-        --max-conns 12 \
-        --keep-open \
-        ${address_spec} \
-        --sh-exec "'${_shell}' -c '. \"${_SERVER_SCRIPT}\" </dev/null >/dev/null 2>&1; http::handle_request'"
+    local _logging_level=-q # -v
+
+    # SEE: https://annvix.com/using_tcpserver
+    tcpserver \
+        ${_logging_level} \
+        -dH \
+        -c 12 \
+        ${_cdb:+-x} ${_cdb} ${_cdb:+-X}\
+        -b 4 \
+        0 \
+        "${_port}" \
+        "${_shell}" -c ". \"${_SERVER_SCRIPT}\" </dev/null >/dev/null 2>&1; http::handle_request"
 }
 
 http::url_mappings() {

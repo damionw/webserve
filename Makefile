@@ -1,4 +1,4 @@
-PACKAGE_NAME := Webserve
+PACKAGE_NAME := webserve
 BUILD_SHARE_PATH := build/share/$(PACKAGE_NAME)
 INSTALL_PATH := $(shell python -c 'import sys; print sys.prefix if hasattr(sys, "real_prefix") else exit(255)' 2>/dev/null || echo "/usr/local")
 
