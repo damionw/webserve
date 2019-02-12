@@ -3,7 +3,7 @@
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.11
+VERSION=0.12
 
 #===================================================================================
 #                              Response Functions
@@ -437,7 +437,7 @@ http::handle_request() {
     while true
     do
         # WARNING: We hold the contents as base64 because bash variables (C strings) cannot hold null bytes
-        _block="$(timeout 1.0s dd bs=4096 count=1 2>/dev/null | base64)"
+        _block="$(timeout 1.2s dd bs=16384 count=1 2>/dev/null | base64)"
         test -z "${_block}" -a $_count -gt 2 && break
         ((++_count))
         _store="${_store}${_block}"
@@ -536,7 +536,7 @@ http::run_server() {
     local _logging_level=-q # -v
 
     # SEE: https://annvix.com/using_tcpserver
-    tcpserver \
+    exec tcpserver \
         ${_logging_level} \
         -dH \
         -c 12 \
@@ -544,7 +544,7 @@ http::run_server() {
         -b 4 \
         0 \
         "${_port}" \
-        "${_shell}" -c ". \"${_SERVER_SCRIPT}\" </dev/null >/dev/null 2>&1; http::handle_request"
+        "${_shell}" -c ". \"${_SERVER_SCRIPT}\" </dev/null >/dev/null; http::handle_request"
 }
 
 http::url_mappings() {
@@ -578,11 +578,10 @@ then
 
         _module="$(readlink -f "$(echo "${_modules}" | head -1)")"
         _modules="$(echo "${_modules}" | tail --lines=+2)"
-        logging::info "Loading ${_module}"
 
         # Extract http::<name> function definitions and transform only the declaration names to http::<index>::<name>
         _definitions="$(
-            bash -c ". '${_module}'"'; for name in $(declare -F | awk '"'"'{print $NF;}'"'"' | grep "^http::"); do declare -f "${name}"; done' |
+            bash -c ". '${_module}' || echo 'Failed loading module ${_module}' >&2"'; for name in $(declare -F | awk '"'"'{print $NF;}'"'"' | grep "^http::"); do declare -f "${name}"; done' |
             sed -e 's/^http::\([0-9a-zA-Z_][0-9a-zA-Z_]*\)[ ]/http::'"${_index}"'::\1 /g'
         )"
 
