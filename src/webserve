@@ -433,15 +433,29 @@ http::handle_request() {
 
     local _store _block
     local _count=0
+    local _bytes
+    local _pid=$$
+    local _total=0
+    local _code
 
     while true
     do
         # WARNING: We hold the contents as base64 because bash variables (C strings) cannot hold null bytes
         _block="$(timeout 1.2s dd bs=16384 count=1 2>/dev/null | base64)"
-        test -z "${_block}" -a $_count -gt 2 && break
+        _code=$?
+        _bytes="$(echo -n "${_block}" | wc -c)"
+
+        test "${_bytes}" = 0 -a ${_count} -gt 1 && break
+        ((_total+=${_bytes}))
         ((++_count))
         _store="${_store}${_block}"
     done
+
+    if [ ${_total} = 0 ]
+    then
+        http::400_error
+        return 255
+    fi
 
     # Find edge between headers and content by parsing characters in hex notation
     local _offset="$(
@@ -533,13 +547,11 @@ http::run_server() {
 
     logging::info "Starting webserver on port ${_port} with static folder '${_SERVER_STATIC}'"
 
-    local _logging_level=-q # -v
-
     # SEE: https://annvix.com/using_tcpserver
     exec tcpserver \
-        ${_logging_level} \
-        -dH \
-        -c 12 \
+        -q \
+        -DH \
+        -c 4 \
         ${_cdb:+-x} ${_cdb} \
         -b 4 \
         0 \
@@ -551,8 +563,12 @@ http::url_mappings() {
     # Import external module url mappings
     for name in $(declare -F | awk '{print $NF;}' | grep '^http::[0-9a-zA-Z_][0-9a-zA-Z_]*::url_mappings')
     do
-        logging::info "Import url mappings from ${name}"
-        "${name}"
+        if "${name}"
+        then
+            logging::info "Imported url mappings from ${name}"
+        else
+            logging::info "Failed importing url mappings from ${name}"
+        fi
     done
 
     url::add_handler '^\/static\/.*$' GET http::response_file
