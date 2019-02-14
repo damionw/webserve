@@ -231,7 +231,7 @@ logging::format() {
         echo "$(date '+%Y-%m-%d %H:%M:%S') [$(echo "${_mode}" | tr '[a-z]' '[A-Z]')] <${_pid}>: $@" >&2
     fi
 
-    return $_retval
+    return ${_retval}
 }
 
 logging::fatal() {
@@ -703,14 +703,22 @@ logging::set_severity info
 #===================================================================================
 showhelp() {
     local _synopsis="
-        Provide information about the bashlib module
+        Provide information about the Webserve http server
     "
 
     local -A _keywords=(
-        [env]="Provide the current virtualenv path (if any)"
-        [lib]="Provide the library module import file"
-        [version]="Produce the library's version string"
-        [commands]="List available subcommands"
+        [debug]="Expose debug level logging"
+        [info]="Expose normal level logging"
+        [warning]="Expose error level logging"
+        [error]="Expose error level logging"
+        [fatal]="Expose fatal error level logging"
+        [api:]="Provide folder of api scripts"
+        [static:]="Provide folder of static content files"
+        [module:]="Provide additional handler modules (must expose <name>::url_mappings() function)"
+        [port:]="Port to listen on for http requests"
+        [address:]="Client address spec to accept http requests from (synonym for allow)"
+        [allow:]="Client address spec to accept http requests from (synonym for address)"
+        [version]="Webserve version string"
         [help]="Display instructions"
     )
 
@@ -719,7 +727,7 @@ showhelp() {
 
     local _contents="$(
         echo "${_terms}" | awk -F: '{printf("%s[--%s%s]", sep, $1, (NF == 2 ? sprintf("=<%s>", $1) : "")); sep=" "}'
-        echo -en "${_synopsis:+\n}"
+        echo -en "${_synopsis:+\n\n}"
         echo "${_synopsis}" | sed -e 's/^[ ]*//g' -e '/^[ ]*$/d'
 
         echo "${_terms}" | {
@@ -737,21 +745,7 @@ showhelp() {
         }
     )"
 
-    echo "Usage: $0 ${_contents}" >&2
-}
-
-#===================================================================================
-#                              Help Message
-#===================================================================================
-showhelp()
-{
-    contents=$(
-        echo "${*}" |
-        awk -F, '{for (i=1; i <= NF; ++i) {print $i;}}' |
-        awk -F: '{printf("%s[--%s%s]", sep, $1, (NF == 2 ? sprintf("=<%s>", $1) : "")); sep=" "}'
-    )
-
-    echo "Usage: $0 ${contents}" >&2
+    echo -e "Usage: $0 ${_contents}\n" >&2
 }
 
 #===================================================================================
@@ -804,7 +798,7 @@ do
             ;;
 
         --port|-p)
-            listener_port=$2
+            listener_port="${2}"
             shift 2
             ;;
 
