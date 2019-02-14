@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.12
+VERSION=0.13
 
 #===================================================================================
 #                              Response Functions
@@ -40,6 +39,22 @@ response::get_headers() {
     for ((_index=0; _index < ${#headers[@]}; ++_index)) {
         echo "${headers[${_index}]}"
     }
+}
+
+#===================================================================================
+#                                Formatters
+#===================================================================================
+http::json::simple_dict() {
+    local _sep="{";
+
+    while [ $# -gt 1 ]
+    do
+        echo "${_sep}\"$1\": $2"
+        shift 2
+        _sep=","
+    done
+
+    echo "}"
 }
 
 #===================================================================================
@@ -102,13 +117,11 @@ tcp::available_ports() {
     sed -e '/^[ ]*$/d' |
     sort -n |
     awk '{
-        for (; i < $1; ++i)
-        {
+        for (; i < $1; ++i) {
             print i;
         }
 
-        if (i == $1)
-        {
+        if (i == $1) {
             ++i;
         }
     }' i=${start_port}
@@ -172,30 +185,93 @@ url::match_handler() {
 }
 
 #===================================================================================
-#                                HTTP Handlers
+#                                Logging
 #===================================================================================
-logging::info() {
+logging::set_severity() {
+    export __webserve_logging_severity__="${1}"
+}
+
+logging::get_severity() {
+    echo "${__webserve_logging_severity__:-info}" | tr '[A-Z]' '[a-z]'
+}
+
+logging::get_levels() {
+    local _target="$(logging::get_severity)"
+    local _severity=
+
+    ordered_severities() {
+        sed -e 's/^[ ]*//g' -e '/^$/d' <<<"
+            fatal
+            error
+            warning
+            info
+            debug
+        "
+    }
+
+    ordered_severities | while read _severity
+    do
+        echo "${_severity}"
+
+        if [ "${_severity}" = "${_target}" ]
+        then
+            break
+        fi
+    done
+}
+
+logging::format() {
     local _retval=$?
-    echo -e "$(date '+%Y-%m-%d %H:%M:%S'): $*" >&2
+    local _mode="${1}"
+    local _pid=$$
+    shift
+
+    if (logging::get_levels | grep -qi '^'"${_mode}"'$')
+    then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') [$(echo "${_mode}" | tr '[a-z]' '[A-Z]')] <${_pid}>: $@" >&2
+    fi
+
     return $_retval
 }
 
 logging::fatal() {
-    local _retval=$?
-    echo -e "$(date '+%Y-%m-%d %H:%M:%S'): $*" >&2
-    exit $_retval
+    logging::format fatal "$@"
+    exit 255
+}
+
+logging::error() {
+    logging::format error "$@"
+}
+
+logging::warning() {
+    logging::format warning "$@"
+}
+
+logging::info() {
+    logging::format info "$@"
+}
+
+logging::debug() {
+    logging::format debug "$@"
+}
+
+#===================================================================================
+#                                HTTP Handlers
+#===================================================================================
+http::_error_text() {
+    echo "ERROR" | response::send
 }
 
 http::400_error() {
     response::set_status 400 "HTTP/1.1"
     header::server_type
-    echo "ERROR" | response::send
+    http::_error_text
 }
 
 http::404_error() {
     response::set_status 404 "HTTP/1.1"
     header::server_type
-    echo "ERROR" | response::send
+    http::_error_text
 }
 
 http::response_html() {
@@ -409,10 +485,11 @@ http::response_script() {
     local _content="${4}"
     local _action="$(basename "${_request}")"
     local _filename="${_SERVER_API}/${_action}"
+    local _result
 
     if result="$("${_filename}")" # Result must be valid JSON object
     then
-        echo "{\"action\": \"${_action}\", \"result\": ${result}}" | http::response_json
+        http::json::simple_dict action "\"${_action}\"" result "${_result}" | http::response_json
     else
         http::400_error
     fi
@@ -434,22 +511,30 @@ http::handle_request() {
     local _store _block
     local _count=0
     local _bytes
-    local _pid=$$
     local _total=0
     local _code
 
     while true
     do
         # WARNING: We hold the contents as base64 because bash variables (C strings) cannot hold null bytes
-        _block="$(timeout 1.2s dd bs=16384 count=1 2>/dev/null | base64)"
+        _block="$(timeout 0.8s dd bs=16384 count=1 2>/dev/null | base64)"
         _code=$?
         _bytes="$(echo -n "${_block}" | wc -c)"
 
-        test "${_bytes}" = 0 -a ${_count} -gt 1 && break
+        if [ "${_bytes}" -gt 0 ]
+        then
+            logging::debug "READ ${_bytes} bytes"
+        elif [ ${_count} -gt 5 ]
+        then
+            break
+        fi
+
+        _store="${_store}${_block}"
         ((_total+=${_bytes}))
         ((++_count))
-        _store="${_store}${_block}"
     done
+
+    logging::debug "TOTAL ${_total} bytes transferred"
 
     if [ ${_total} = 0 ]
     then
@@ -551,7 +636,7 @@ http::run_server() {
     exec tcpserver \
         -q \
         -DH \
-        -c 4 \
+        -c 1 \
         ${_cdb:+-x} ${_cdb} \
         -b 4 \
         0 \
@@ -609,6 +694,53 @@ then
 fi
 
 #===================================================================================
+#                              Logging Options
+#===================================================================================
+logging::set_severity info
+
+#===================================================================================
+#                              Help Message
+#===================================================================================
+showhelp() {
+    local _synopsis="
+        Provide information about the bashlib module
+    "
+
+    local -A _keywords=(
+        [env]="Provide the current virtualenv path (if any)"
+        [lib]="Provide the library module import file"
+        [version]="Produce the library's version string"
+        [commands]="List available subcommands"
+        [help]="Display instructions"
+    )
+
+    local _terms="$(echo "${@}" | awk -F, '{for (i=1; i <= NF; ++i) {print $i;}}' | sed -e 's/[\:]*$//g')"
+    local _topic
+
+    local _contents="$(
+        echo "${_terms}" | awk -F: '{printf("%s[--%s%s]", sep, $1, (NF == 2 ? sprintf("=<%s>", $1) : "")); sep=" "}'
+        echo -en "${_synopsis:+\n}"
+        echo "${_synopsis}" | sed -e 's/^[ ]*//g' -e '/^[ ]*$/d'
+
+        echo "${_terms}" | {
+            _prefix="\n"
+
+            while read _topic
+            do
+                if [ -n "${_keywords["${_topic}"]}" ]
+                then
+                    _fill="$(for ((i=$(echo -n "${_topic}" | wc -c); i < 15; ++i)); do echo -n " "; done)"
+                    echo -e "${_prefix}--${_topic}${_fill}${_keywords["${_topic}"]}" | sed -e 's/^./    &/g'
+                    _prefix=""
+                fi
+            done
+        }
+    )"
+
+    echo "Usage: $0 ${_contents}" >&2
+}
+
+#===================================================================================
 #                              Help Message
 #===================================================================================
 showhelp()
@@ -627,7 +759,7 @@ showhelp()
 #       will cause the first non option parameter to be discarded. Here, we just
 #       use -h (help)
 #===================================================================================
-long_options="api:,static:,help,port:,address:,allow:,module:,version"
+long_options="help,version,debug,info,warning,error,fatal,api:,static:,port:,address:,allow:,module:"
 
 OPTION_TEMP=$(getopt -a -o hva:s:p:m: --long ${long_options} -- "$@")
 
@@ -656,6 +788,11 @@ listener_addresses=("127.0.0.1")
 while true
 do
     case "$1" in
+        --debug|--info|--warning|--error|--fatal)
+            logging::set_severity "$(echo "${1}" | sed -e 's/^[\-]*//g')"
+            shift
+            ;;
+
         --version|-v)
             echo "${VERSION}"
             exit 0
