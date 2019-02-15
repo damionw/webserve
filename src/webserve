@@ -2,7 +2,34 @@
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.13
+VERSION=0.14
+
+#===================================================================================
+#                                    Paths
+#===================================================================================
+paths::static() {
+    if [ -n "${1}" ]
+    then
+        export _SERVER_STATIC="${1}"
+    elif [ -z "${_SERVER_STATIC}" ]
+    then
+        return 255
+    fi
+
+    echo "${_SERVER_STATIC}"
+}
+
+paths::api() {
+    if [ -n "${1}" ]
+    then
+        export _SERVER_API="${1}"
+    elif [ -z "${_SERVER_API}" ]
+    then
+        return 255
+    fi
+
+    echo "${_SERVER_API}"
+}
 
 #===================================================================================
 #                              Response Functions
@@ -259,19 +286,19 @@ logging::debug() {
 #                                HTTP Handlers
 #===================================================================================
 http::_error_text() {
-    echo "ERROR" | response::send
+    echo "ERROR"
 }
 
 http::400_error() {
     response::set_status 400 "HTTP/1.1"
     header::server_type
-    http::_error_text
+    echo "${@:-$(http::_error_text)}" | response::send
 }
 
 http::404_error() {
     response::set_status 404 "HTTP/1.1"
     header::server_type
-    http::_error_text
+    echo "${@:-$(http::_error_text)}" | response::send
 }
 
 http::response_html() {
@@ -319,18 +346,24 @@ http::response_plain() {
 }
 
 http::response_file() {
+    local _static="$(paths::static)"
     local _method="${1}"
     local _request="${2}"
     local _headers="${3}"
     local _content="${4}"
-    local _filename="${5:-${_SERVER_STATIC}}/$(basename "${_request}")"
-    local _extension="$(echo "${_filename}" | awk -F. '{print $NF;}' | tr '[A-Z]' '[a-z]')"
+    local _name="$(echo "${_request}" | sed -e 's|^\/static\/||')"
+    local _folder="${5:-${_static}}"
+    local _filename="${_folder}/${_name}"
 
-    if [ ! -f "${_filename}" ]
+    logging::debug "REQUEST: ${_request}"
+
+    if [ -z "${_name}" -o ! -f "${_filename}" ]
     then
-        http::404_error
+        http::404_error "${_name} not found"
         return 255
     fi
+
+    local _extension="$(echo "${_name}" | awk -F. '{print $NF;}' | tr '[A-Z]' '[a-z]')"
 
     case "${_extension}" in
         html)
@@ -465,7 +498,7 @@ http::response_api_catalog() {
         awk 'BEGIN {print "[";} {printf("%s%s", sep, $0); sep=",";} END {print "]";}'
     }
 
-    local _api_folder="${_SERVER_API}"
+    local _api_folder="$(paths::api)"
 
     if ! [ -n "${_api_folder}" -a -d "${_api_folder}" ]
     then
@@ -483,11 +516,15 @@ http::response_script() {
     local _request="${2}"
     local _headers="${3}"
     local _content="${4}"
+    local _api_folder="$(paths::api)"
     local _action="$(basename "${_request}")"
-    local _filename="${_SERVER_API}/${_action}"
+    local _filename="${_api_folder}/${_action}"
     local _result
 
-    if result="$("${_filename}")" # Result must be valid JSON object
+    if [ -z "${_api_folder}" ]
+    then
+        http::404_error "API Folder isn't specified"
+    elif result="$("${_filename}")" # Result must be valid JSON object
     then
         http::json::simple_dict action "\"${_action}\"" result "${_result}" | http::response_json
     else
@@ -615,10 +652,7 @@ http::run_server() {
         tcprules "${_cdb}" "${_cdb}.tmp" <<< "$(
             for _addr in "$@"
             do
-                if _addr="$(tcp::host_to_inet_address "${_addr}")"
-                then
-                    echo "${_addr}:allow"
-                fi
+                _addr="$(tcp::host_to_inet_address "${_addr}")" && echo "${_addr}:allow"
             done
 
             echo ":deny"
@@ -630,7 +664,7 @@ http::run_server() {
         logging::fatal "Need to supply a server port"
     fi
 
-    logging::info "Starting webserver on port ${_port} with static folder '${_SERVER_STATIC}'"
+    logging::info "Starting webserver on port ${_port} with static folder '$(paths::static)'"
 
     # SEE: https://annvix.com/using_tcpserver
     exec tcpserver \
@@ -645,6 +679,8 @@ http::run_server() {
 }
 
 http::url_mappings() {
+    local _api_folder="$(paths::api)"
+
     # Import external module url mappings
     for name in $(declare -F | awk '{print $NF;}' | grep '^http::[0-9a-zA-Z_][0-9a-zA-Z_]*::url_mappings')
     do
@@ -658,7 +694,7 @@ http::url_mappings() {
 
     url::add_handler '^\/static\/.*$' GET http::response_file
 
-    if [ -n "${_SERVER_API}" -a -d "${_SERVER_API}" ]
+    if [ -n "${_api_folder}" -a -d "${_api_folder}" ]
     then
         url::add_handler '^\/api\/*$'  GET http::response_api_catalog
         url::add_handler '^\/api\/.*$' GET http::response_script
@@ -668,7 +704,7 @@ http::url_mappings() {
 #===================================================================================
 #               Break out here if running in the request handling context
 #===================================================================================
-if ${_IN_SERVER_REQUEST_HANDLER:=false}
+if ${_WEBSERVE_IN_SERVER_REQUEST_HANDLER:=false}
 then
     _modules="$(echo "${_SERVER_MODULES}" | sed -e '/^[ ]*$/d' | sort -u)"
     _index=0
@@ -703,7 +739,7 @@ logging::set_severity info
 #===================================================================================
 showhelp() {
     local _synopsis="
-        Provide information about the Webserve http server
+        Information about the Webserve http server
     "
 
     local -A _keywords=(
@@ -771,10 +807,10 @@ eval set -- "$OPTION_TEMP"
 # NOTE: The command line parameters are available for scripts which
 #       source this file.
 #===================================================================================
-export _SERVER_SCRIPT="${BASH_SOURCE[0]}"
-export _SERVER_STATIC="$(dirname "${SERVER_SCRIPT}")"
-export _SERVER_API=
-export _SERVER_MODULES=
+export _SERVER_SCRIPT="${BASH_SOURCE[0]}" _SERVER_MODULES= _SERVER_API= _SERVER_STATIC=
+
+# Preselect static path relative to utility folder
+paths::static "$(dirname "${SERVER_SCRIPT}")"
 
 listener_port=$(tcp::get_unused_port)
 listener_addresses=("127.0.0.1")
@@ -808,12 +844,12 @@ do
             ;;
 
         --static|-s)
-            export _SERVER_STATIC="$(readlink -f "${2}")"
+            paths::static "$(readlink -f "${2}")"
             shift 2
             ;;
 
         --api)
-            export _SERVER_API="$(readlink -f "${2}")"
+            paths::api "$(readlink -f "${2}")"
             shift 2
             ;;
 
@@ -832,4 +868,4 @@ done
 #===================================================================================
 #                 Run server with options and setting context
 #===================================================================================
-_IN_SERVER_REQUEST_HANDLER=true http::run_server "${listener_port}" ${listener_addresses[*]}
+_WEBSERVE_IN_SERVER_REQUEST_HANDLER=true http::run_server "${listener_port}" ${listener_addresses[*]}
