@@ -14,9 +14,9 @@ paths::static() {
     elif [ -z "${_SERVER_STATIC}" ]
     then
         return 255
+    else
+        echo "${_SERVER_STATIC}"
     fi
-
-    echo "${_SERVER_STATIC}"
 }
 
 paths::api() {
@@ -26,9 +26,9 @@ paths::api() {
     elif [ -z "${_SERVER_API}" ]
     then
         return 255
+    else
+        echo "${_SERVER_API}"
     fi
-
-    echo "${_SERVER_API}"
 }
 
 #===================================================================================
