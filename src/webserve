@@ -569,7 +569,7 @@ http::handle_request() {
     while true
     do
         # WARNING: We hold the contents as base64 because bash variables (C strings) cannot hold null bytes
-        _block="$(timeout 0.3s dd bs=16384 count=1 2>/dev/null | base64)"
+        _block="$(timeout 0.5s dd bs=16384 count=1 2>/dev/null | base64)"
         _code=$?
         _bytes="$(echo -n "${_block}" | wc -c)"
 
