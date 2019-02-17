@@ -2,7 +2,7 @@
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.14
+VERSION=0.15
 
 #===================================================================================
 #                                    Paths
@@ -128,6 +128,10 @@ header::access_control() {
     response::add_header "Access-Control-Allow-Origin: ${1}"
 }
 
+header::location() {
+    response::add_header "Location: ${1}"
+}
+
 #===================================================================================
 #                                TCP/IP
 #===================================================================================
@@ -209,6 +213,11 @@ url::match_handler() {
     }
 
     return 255
+}
+
+url::get_base_url() {
+    echo "${1}" | sed -e 's/[\/][\/]/|/1' -e 's/[\/].*$//g' -e 's/[|]/\/\//g'
+
 }
 
 #===================================================================================
@@ -299,6 +308,12 @@ http::404_error() {
     response::set_status 404 "HTTP/1.1"
     header::server_type
     echo "${@:-$(http::_error_text)}" | response::send
+}
+
+http::301_redirect() {
+    response::set_status 301 "HTTP/1.1"
+    header::location "$1"
+    echo "" | response::send
 }
 
 http::response_html() {
@@ -554,14 +569,14 @@ http::handle_request() {
     while true
     do
         # WARNING: We hold the contents as base64 because bash variables (C strings) cannot hold null bytes
-        _block="$(timeout 0.8s dd bs=16384 count=1 2>/dev/null | base64)"
+        _block="$(timeout 0.3s dd bs=16384 count=1 2>/dev/null | base64)"
         _code=$?
         _bytes="$(echo -n "${_block}" | wc -c)"
 
         if [ "${_bytes}" -gt 0 ]
         then
             logging::debug "READ ${_bytes} bytes"
-        elif [ ${_count} -gt 5 ]
+        elif [ ${_count} -gt 1 ]
         then
             break
         fi
