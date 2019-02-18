@@ -167,7 +167,11 @@ url::match_handler() {
     local _index
 
     for ((_index=0; _index < ${#URL_REGEXES[@]}; ++_index)) {
-        eval "${URL_REGEXES[${_index}]}"
+        if ! eval "${URL_REGEXES[${_index}]}"
+        then
+            logging::error "Couldn't eval '${URL_REGEXES[${_index}]}'"
+            continue
+        fi
 
         if [ -z "$(echo "${_request}" | awk "/${_regex}/"'{print $1;}')" ]
         then
