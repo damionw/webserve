@@ -2,7 +2,7 @@
 #===================================================================================
 #                                  Constants
 #===================================================================================
-VERSION=0.15
+VERSION=0.16
 
 #===================================================================================
 #                                    Paths
@@ -563,32 +563,39 @@ http::handle_request() {
     local _request
     local _version
     local _handler
+    local _char
 
-    local _store _block
-    local _count=0
-    local _bytes
-    local _total=0
-    local _code
+    local _store="$(
+        while true
+        do
+            # NOTE: https://www.ict.griffith.edu.au/anthony/info/shell/input_reading.txt
+            # WARNING: We hold the contents as base64 because bash variables (C strings) cannot hold null bytes
 
-    while true
-    do
-        # WARNING: We hold the contents as base64 because bash variables (C strings) cannot hold null bytes
-        _block="$(timeout 0.5s dd bs=16384 count=1 2>/dev/null | base64)"
-        _code=$?
-        _bytes="$(echo -n "${_block}" | wc -c)"
+            IFS= read -r -s -d '' -n 1 -t 1 _char # Error 1 == timeout, 142 == EOF
 
-        if [ "${_bytes}" -gt 0 ]
-        then
-            logging::debug "READ ${_bytes} bytes"
-        elif [ ${_count} -gt 1 ]
-        then
-            break
-        fi
+            local _error=$?
 
-        _store="${_store}${_block}"
-        ((_total+=${_bytes}))
-        ((++_count))
-    done
+            if [ "${_error}" -eq 1 -o "${_error}" -eq 142 ]
+            then
+                logging::debug "READ: error=${_error}"
+                break
+            elif [ -z "${_char}" ]
+            then
+                _char="\0"
+                _mode="-e"
+            else
+                _mode=""
+            fi
+
+            echo -n ${_mode} "${_char}" | base64
+        done
+    )"
+
+    local _total="$(
+        echo "${_store}" |
+        base64 --decode |
+        wc -c
+    )"
 
     logging::debug "TOTAL ${_total} bytes transferred"
 
@@ -664,6 +671,11 @@ http::run_server() {
     local _cdb=
     local _addr
 
+    if [ -z "${_port}" ]
+    then
+        logging::fatal "Need to supply a server port"
+    fi
+
     if [ "$#" -gt 0 ]
     then
         _cdb="$(mktemp -q --suffix=.cdb)"
@@ -678,17 +690,16 @@ http::run_server() {
         )"
     fi
 
-    if [ -z "${_port}" ]
-    then
-        logging::fatal "Need to supply a server port"
-    fi
-
     logging::info "Starting webserver on port ${_port} with static folder '$(paths::static)'"
 
+    # FIXME: multiple concurrent connections (-c 2+) has unexplained read failures with the
+    # service handler processes
+    
     # SEE: https://annvix.com/using_tcpserver
     exec tcpserver \
         -q \
-        -DH \
+        -d \
+        -H \
         -c 1 \
         ${_cdb:+-x} ${_cdb} \
         -b 4 \

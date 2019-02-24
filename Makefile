@@ -15,6 +15,7 @@ demo: all
 		--module=$(BUILD_SHARE_PATH)/examples/modules/primary-site \
 		--module=$(BUILD_SHARE_PATH)/examples/modules/demo1 \
 		--module=$(BUILD_SHARE_PATH)/examples/modules/postit \
+		--debug \
 		--port=11111
 
 install: tests
