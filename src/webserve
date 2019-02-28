@@ -1,4 +1,42 @@
 #!/usr/bin/env bash
+
+#===================================================================================
+#                            Fetch request info
+#===================================================================================
+if ${_WEBSERVE_IN_SERVER_REQUEST_HANDLER:=false}
+then
+    _store="$(
+        count=0
+
+        while true
+        do
+            # NOTE: https://www.ict.griffith.edu.au/anthony/info/shell/input_reading.txt
+            # WARNING: We hold the contents as base64 because bash variables (C strings) cannot hold null bytes
+
+            IFS= read -r -s -d '' -n 1 -t 1 _char # Error 1 == timeout, 142 == EOF
+
+            _error=$?
+
+            if [ "${_error}" -eq 1 ]
+            then
+                ((++count))
+                test ${count} -gt 2 && break
+            elif [ "${_error}" -eq 142 ]
+            then
+                break
+            elif [ -z "${_char}" ]
+            then
+                _char="\0"
+                _mode="-e"
+            else
+                _mode=""
+            fi
+
+            echo -n ${_mode} "${_char}" | base64
+        done
+    )"
+fi
+
 #===================================================================================
 #                                  Constants
 #===================================================================================
@@ -317,7 +355,7 @@ http::404_error() {
 http::301_redirect() {
     response::set_status 301 "HTTP/1.1"
     header::location "$1"
-    echo "" | response::send
+    echo "DUMMY" | response::send
 }
 
 http::response_html() {
@@ -563,33 +601,6 @@ http::handle_request() {
     local _request
     local _version
     local _handler
-    local _char
-
-    local _store="$(
-        while true
-        do
-            # NOTE: https://www.ict.griffith.edu.au/anthony/info/shell/input_reading.txt
-            # WARNING: We hold the contents as base64 because bash variables (C strings) cannot hold null bytes
-
-            IFS= read -r -s -d '' -n 1 -t 1 _char # Error 1 == timeout, 142 == EOF
-
-            local _error=$?
-
-            if [ "${_error}" -eq 1 -o "${_error}" -eq 142 ]
-            then
-                logging::debug "READ: error=${_error}"
-                break
-            elif [ -z "${_char}" ]
-            then
-                _char="\0"
-                _mode="-e"
-            else
-                _mode=""
-            fi
-
-            echo -n ${_mode} "${_char}" | base64
-        done
-    )"
 
     local _total="$(
         echo "${_store}" |
@@ -665,49 +676,6 @@ http::handle_request() {
     "${_handler:-"http::404_error"}" "${_method}" "${_request}" "${_headers}" "${_content}" "${_b64_content}" | stdbuf --output=0 cat && sleep 1
 }
 
-http::run_server() {
-    local _shell="$(which bash)"
-    local _port="${1}" && shift
-    local _cdb=
-    local _addr
-
-    if [ -z "${_port}" ]
-    then
-        logging::fatal "Need to supply a server port"
-    fi
-
-    if [ "$#" -gt 0 ]
-    then
-        _cdb="$(mktemp -q --suffix=.cdb)"
-
-        tcprules "${_cdb}" "${_cdb}.tmp" <<< "$(
-            for _addr in "$@"
-            do
-                _addr="$(tcp::host_to_inet_address "${_addr}")" && echo "${_addr}:allow"
-            done
-
-            echo ":deny"
-        )"
-    fi
-
-    logging::info "Starting webserver on port ${_port} with static folder '$(paths::static)'"
-
-    # FIXME: multiple concurrent connections (-c 2+) has unexplained read failures with the
-    # service handler processes
-    
-    # SEE: https://annvix.com/using_tcpserver
-    exec tcpserver \
-        -q \
-        -d \
-        -H \
-        -c 1 \
-        ${_cdb:+-x} ${_cdb} \
-        -b 4 \
-        0 \
-        "${_port}" \
-        "${_shell}" -c ". \"${_SERVER_SCRIPT}\" </dev/null >/dev/null; http::handle_request"
-}
-
 http::url_mappings() {
     local _api_folder="$(paths::api)"
 
@@ -731,32 +699,79 @@ http::url_mappings() {
     fi
 }
 
+http::run_server() {
+    local _shell="$(which bash)"
+    local _port="${1}" && shift
+    local _cdb=
+    local _addr
+
+    if [ -z "${_port}" ]
+    then
+        logging::fatal "Need to supply a server port"
+    fi
+
+    # Assemble connection filter rules
+    if [ "$#" -gt 0 ]
+    then
+        _cdb="$(mktemp -q --suffix=.cdb)"
+
+        tcprules "${_cdb}" "${_cdb}.tmp" <<< "$(
+            for _addr in "$@"
+            do
+                _addr="$(tcp::host_to_inet_address "${_addr}")" && echo "${_addr}:allow"
+            done
+
+            echo ":deny"
+        )"
+    fi
+
+    logging::info "Starting webserver on port ${_port} with static folder '$(paths::static)'"
+
+    # FIXME: multiple concurrent connections (-c 2+) has unexplained read failures with the
+    # service handler processes
+
+    # SEE: https://annvix.com/using_tcpserver
+    _WEBSERVE_IN_SERVER_REQUEST_HANDLER=true exec tcpserver \
+        -q \
+        -d \
+        -H \
+        -c 4 \
+        ${_cdb:+-x} ${_cdb} \
+        -b 4 \
+        0 \
+        "${_port}" \
+        "${_SERVER_SCRIPT}" 11<&0 12>&1 13>&2 </dev/null
+}
+
 #===================================================================================
 #               Break out here if running in the request handling context
 #===================================================================================
 if ${_WEBSERVE_IN_SERVER_REQUEST_HANDLER:=false}
 then
-    _modules="$(echo "${_SERVER_MODULES}" | sed -e '/^[ ]*$/d' | sort -u)"
-    _index=0
+    {
+        _modules="$(echo "${_SERVER_MODULES}" | sed -e '/^[ ]*$/d' | sort -u)"
+        _index=0
 
-    while [ -n "${_modules}" ]
-    do
-        ((++_index))
+        while [ -n "${_modules}" ]
+        do
+            ((++_index))
 
-        _module="$(readlink -f "$(echo "${_modules}" | head -1)")"
-        _modules="$(echo "${_modules}" | tail --lines=+2)"
+            _module="$(readlink -f "$(echo "${_modules}" | head -1)")"
+            _modules="$(echo "${_modules}" | tail --lines=+2)"
 
-        # Extract http::<name> function definitions and transform only the declaration names to http::<index>::<name>
-        _definitions="$(
-            bash -c ". '${_module}' || echo 'Failed loading module ${_module}' >&2"'; for name in $(declare -F | awk '"'"'{print $NF;}'"'"' | grep "^http::"); do declare -f "${name}"; done' |
-            sed -e 's/^http::\([0-9a-zA-Z_][0-9a-zA-Z_]*\)[ ]/http::'"${_index}"'::\1 /g'
-        )"
+            # Extract http::<name> function definitions and transform only the declaration names to http::<index>::<name>
+            _definitions="$(
+                bash -c ". '${_module}' || echo 'Failed loading module ${_module}' >&2"'; for name in $(declare -F | awk '"'"'{print $NF;}'"'"' | grep "^http::"); do declare -f "${name}"; done' |
+                sed -e 's/^http::\([0-9a-zA-Z_][0-9a-zA-Z_]*\)[ ]/http::'"${_index}"'::\1 /g'
+            )"
 
-        # Import modified functions into local namespace
-        eval "${_definitions}"
-    done
+            # Import modified functions into local namespace
+            eval "${_definitions}"
+        done
+    } </dev/null >&12 2>&13
 
-    return
+    http::handle_request 2>&13
+    exit $?
 fi
 
 #===================================================================================
@@ -898,4 +913,4 @@ done
 #===================================================================================
 #                 Run server with options and setting context
 #===================================================================================
-_WEBSERVE_IN_SERVER_REQUEST_HANDLER=true http::run_server "${listener_port}" ${listener_addresses[*]}
+http::run_server "${listener_port}" ${listener_addresses[*]}
