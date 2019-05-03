@@ -1,35 +1,91 @@
 PACKAGE_NAME := webserve
-BUILD_SHARE_PATH := build/share/$(PACKAGE_NAME)
-INSTALL_PATH := $(shell python -c 'import sys; print sys.prefix if hasattr(sys, "real_prefix") else exit(255)' 2>/dev/null || echo "/usr/local")
 
-.PHONY: tests clean
+PACKAGE_VERSION := $(shell src/bin/$(PACKAGE_NAME) --version)
 
-all: build
-	@cp -R examples/. $(BUILD_SHARE_PATH)/examples/.
-	@cp -R src/webserve build/bin/.
+LOCAL_PATH := local
+LOCAL_BIN_PATH := $(LOCAL_PATH)/bin
 
-demo: all
-	build/bin/webserve \
-		--static=$(BUILD_SHARE_PATH)/examples/html \
-		--api=$(BUILD_SHARE_PATH)/examples/api \
-		--module=$(BUILD_SHARE_PATH)/examples/modules/primary-site \
-		--module=$(BUILD_SHARE_PATH)/examples/modules/demo1 \
-		--module=$(BUILD_SHARE_PATH)/examples/modules/postit \
+BUILD_PATH := build
+BUILD_BIN_PATH := $(BUILD_PATH)/bin
+BUILD_LIB_PATH := $(BUILD_PATH)/lib
+BUILD_SHARE_PATH := $(BUILD_PATH)/share
+BUILD_SHARE_EXAMPLES := $(BUILD_SHARE_PATH)/examples
+
+LIB_COMPONENTS := $(wildcard src/lib/$(PACKAGE_NAME)-$(PACKAGE_VERSION)/*)
+BIN_COMPONENTS := $(foreach name, $(wildcard src/bin/*), $(BUILD_BIN_PATH)/$(notdir $(name)))
+DIR_COMPONENTS := $(foreach name, bin share lib, build/$(name))
+
+INSTALL_PATH := $(shell python -c 'import sys; print(sys.prefix if (hasattr(sys, "real_prefix") or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix)) else "/usr/local")')
+PACKAGE_DESTINATION := /opt/$(PACKAGE_NAME)
+PACKAGE_FILE := packages/$(PACKAGE_NAME)-$(PACKAGE_VERSION).deb
+FREE_PORT := $(shell netstat -ln --tcp -4 | awk '{if (NR > 2) {print $$4;}}' | awk -F: '{print $$2;}' | sort -un | awk '{for (i=a + 1; i < $$1; ++i) {if (i >= start && i <= finish) {print i;}} a=$$1;}' a=0 start=13000 finish=13200 | head -1)
+
+.PHONY: tests clean help
+
+all: $(BUILD_BIN_PATH)/$(PACKAGE_NAME) examples
+
+help:
+	@echo "Usage: make build|tests|all|clean|version|install|dist|demo"
+
+dist: $(PACKAGE_FILE)
+
+version: $(BUILD_BIN_PATH)/$(PACKAGE_NAME)
+	@$< --version
+
+demo: $(BUILD_BIN_PATH)/$(PACKAGE_NAME) examples
+	$< \
+		--static=$(BUILD_SHARE_EXAMPLES)/html \
+		--api=$(BUILD_SHARE_EXAMPLES)/api \
+		--module=$(BUILD_SHARE_EXAMPLES)/modules/primary-site \
+		--module=$(BUILD_SHARE_EXAMPLES)/modules/demo1 \
+		--module=$(BUILD_SHARE_EXAMPLES)/modules/postit \
 		--debug \
-		--port=11111
+		--port=$(FREE_PORT)
 
 install: tests
 	@echo "Installing into directory '$(INSTALL_PATH)'"
 	@rsync -az build/ $(INSTALL_PATH)/
 
-version: all
-	@build/bin/webserve --version
+$(PACKAGE_FILE): $(LOCAL_BIN_PATH)/debianizer packages all
+	@$< \
+		$(foreach pattern, $(PREREQUISITES), $(addprefix --requires=, $(pattern))) \
+		--source=$(BUILD_PATH) \
+		--root=$(PACKAGE_DESTINATION) \
+		--target=$@ \
+		--package="$(PACKAGE_NAME)" \
+		--version=$(PACKAGE_VERSION) \
+		--postinstall=install_hook \
+		--preuninstall=install_hook
+
+	@dpkg --info $@
+	@dpkg --contents $@
+
+$(BUILD_BIN_PATH)/%: build | src/bin
+	@install -m 755 src/bin/$(notdir $@) $@
+
+$(DIR_COMPONENTS): build
+	@install -d $@
+
+$(LOCAL_BIN_PATH)/debianizer: checkouts/recipes local
+	@install -C $</bash/$(notdir $@) $@
+
+checkouts/recipes: | $(@D)
+	@git clone https://github.com/damionw/recipes.git $@
+
+examples: build
+	@rsync -az examples/ $(BUILD_SHARE_PATH)/$(PACKAGE_NAME)/examples/
+
+local:
+	@mkdir -p $@ $@/bin $@/lib $@/share
+
+packages:
+	@mkdir -p $@
 
 build:
-	@install -d build/bin $(BUILD_SHARE_PATH)/examples
+	@install -d $@ $(BUILD_BIN_PATH) $(BUILD_SHARE_PATH)/$(PACKAGE_NAME)/examples
 
 tests: all
 	@PATH="$(shell readlink -f build/bin):$(PATH)" unittests/testsuite
 
 clean:
-	-@rm -rf build checkouts
+	-@rm -rf build packages local checkouts
