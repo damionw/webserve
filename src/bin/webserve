@@ -40,7 +40,7 @@ fi
 #===================================================================================
 #                                  Constants
 #===================================================================================
-__WEBSERVE_VERSION__=0.17
+__WEBSERVE_VERSION__=0.18
 
 #===================================================================================
 #                                    Paths
@@ -855,7 +855,7 @@ eval set -- "$OPTION_TEMP"
 export _SERVER_SCRIPT="${BASH_SOURCE[0]}" _SERVER_MODULES= _SERVER_API= _SERVER_STATIC=
 
 # Preselect static path relative to utility folder
-paths::static "$(dirname "${SERVER_SCRIPT}")"
+paths::static "$(dirname "${_SERVER_SCRIPT}")"
 
 listener_port=$(tcp::get_unused_port)
 listener_addresses=("127.0.0.1")

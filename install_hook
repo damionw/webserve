@@ -11,14 +11,14 @@ PACKAGE_DIR=$(grep "${PACKAGE_NAME}"'$' < "${LISTFILE}" | head -1)
 create_path_files() {
     {
         echo '#!/usr/bin/env bash'
-        echo 'export PATH="${PATH}:'"/opt/${PACKAGE_NAME}/bin"
-    } > /etc/profile.d/$(PACKAGE_NAME).sh
+        echo 'export PATH="${PATH}:'"/opt/${PACKAGE_NAME}/bin"'"'
+    } > /etc/profile.d/${PACKAGE_NAME}.sh
 
-    chmod 755 /etc/profile.d/$(PACKAGE_NAME).sh
+    chmod 755 /etc/profile.d/${PACKAGE_NAME}.sh
 }
 
 remove_path_files() {
-    rm /etc/profile.d/$(PACKAGE_NAME).sh
+    rm /etc/profile.d/${PACKAGE_NAME}.sh
 }
 
 case "$ACTION" in
