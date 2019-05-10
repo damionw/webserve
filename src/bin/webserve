@@ -40,7 +40,7 @@ fi
 #===================================================================================
 #                                  Constants
 #===================================================================================
-__WEBSERVE_VERSION__=0.18
+__WEBSERVE_`ON__=0.19
 
 #===================================================================================
 #                                    Paths
@@ -408,8 +408,9 @@ http::response_file() {
     local _request="${2}"
     local _headers="${3}"
     local _content="${4}"
+    local _b64_content="${5}"
     local _name="$(echo "${_request}" | sed -e 's|^\/static\/||')"
-    local _folder="${5:-${_static}}"
+    local _folder="${6:-${_static}}"
     local _filename="${_folder}/${_name}"
 
     logging::debug "REQUEST: ${_request}"
@@ -727,6 +728,11 @@ http::run_server() {
 
     logging::info "Starting webserver on port ${_port} with static folder '$(paths::static)'"
 
+    if [ -n "${_SERVER_PROXY}" ]
+    then
+        logging::warning "Using proxy agent '${_SERVER_PROXY}'"
+    fi
+
     # FIXME: multiple concurrent connections (-c 2+) has unexplained read failures with the
     # service handler processes
 
@@ -740,7 +746,7 @@ http::run_server() {
         -b 4 \
         0 \
         "${_port}" \
-        "${_SERVER_SCRIPT}" 11<&0 12>&1 13>&2 </dev/null
+        ${_SERVER_PROXY:+"${_SERVER_PROXY}"} "${_SERVER_SCRIPT}" 11<&0 12>&1 13>&2 </dev/null
 }
 
 #===================================================================================
@@ -794,6 +800,7 @@ showhelp() {
         [error]="Expose error level logging"
         [fatal]="Expose fatal error level logging"
         [api:]="Provide folder of api scripts"
+        [proxy:]="Proxy service executable"
         [static:]="Provide folder of static content files"
         [module:]="Provide additional handler modules (must expose <name>::url_mappings() function)"
         [port:]="Port to listen on for http requests"
@@ -834,7 +841,7 @@ showhelp() {
 #       will cause the first non option parameter to be discarded. Here, we just
 #       use -h (help)
 #===================================================================================
-long_options="help,version,debug,info,warning,error,fatal,api:,static:,port:,address:,allow:,module:"
+long_options="help,version,debug,info,warning,error,fatal,api:,static:,port:,address:,allow:,module:,proxy:"
 
 OPTION_TEMP=$(getopt -a -o hva:s:p:m: --long ${long_options} -- "$@")
 
@@ -852,7 +859,7 @@ eval set -- "$OPTION_TEMP"
 # NOTE: The command line parameters are available for scripts which
 #       source this file.
 #===================================================================================
-export _SERVER_SCRIPT="${BASH_SOURCE[0]}" _SERVER_MODULES= _SERVER_API= _SERVER_STATIC=
+export _SERVER_SCRIPT="${BASH_SOURCE[0]}" _SERVER_MODULES= _SERVER_API= _SERVER_STATIC= _SERVER_PROXY=
 
 # Preselect static path relative to utility folder
 paths::static "$(dirname "${_SERVER_SCRIPT}")"
@@ -878,13 +885,18 @@ do
             shift 2
             ;;
 
+        --proxy)
+            export _SERVER_PROXY="${2}"
+            shift 2
+            ;;
+
         --port|-p)
             listener_port="${2}"
             shift 2
             ;;
 
         --module|-m)
-            _SERVER_MODULES="$(echo "${_SERVER_MODULES}"; echo "${2}")"
+            export _SERVER_MODULES="$(echo "${_SERVER_MODULES}"; echo "${2}")"
             shift 2
             ;;
 
