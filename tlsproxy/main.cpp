@@ -16,14 +16,14 @@
 
 static struct option long_options[] =
 {
-    {"certificate",  required_argument, 0, 'c'},
-    {"private",  required_argument, 0, 'p'},
+    {"certfile",  required_argument, 0, 'c'},
+    {"keyfile",  required_argument, 0, 'k'},
     {"command",  required_argument, 0, 'e'},
     {"help",    no_argument, 0, 'h'},
     {0, 0, 0, 0}
 };
 
-char* short_options = "abc:d:f:h";
+char* short_options = "hc:k:e:";
 
 class ProxyConnection{
     public:
@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
                 certificate = optarg;
                 break;
 
-            case 'p':
+            case 'k':
                 privatekey = optarg;
                 break;
 

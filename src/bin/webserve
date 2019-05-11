@@ -40,7 +40,7 @@ fi
 #===================================================================================
 #                                  Constants
 #===================================================================================
-__WEBSERVE_VERSION__=0.19
+__WEBSERVE_VERSION__=0.21
 
 #===================================================================================
 #                                    Paths
@@ -746,7 +746,9 @@ http::run_server() {
         -b 4 \
         0 \
         "${_port}" \
-        ${_SERVER_PROXY:+"${_SERVER_PROXY}"} "${_SERVER_SCRIPT}" 11<&0 12>&1 13>&2 </dev/null
+        "${_SERVER_PROXY:-"${_SERVER_SCRIPT}"}" \
+        ${_SERVER_PROXY:+--command "${_SERVER_SCRIPT}" ${_SERVER_CERTFILE:+--certfile "${_SERVER_CERTFILE}"} ${_SERVER_KEYFILE:+--keyfile "${_SERVER_KEYFILE}"}} \
+        11<&0 12>&1 13>&2 </dev/null
 }
 
 #===================================================================================
@@ -801,6 +803,8 @@ showhelp() {
         [fatal]="Expose fatal error level logging"
         [api:]="Provide folder of api scripts"
         [proxy:]="Proxy service executable"
+        [certfile:]="Provide TLS certificate"
+        [keyfile:]="Provide TLS keyfile"
         [static:]="Provide folder of static content files"
         [module:]="Provide additional handler modules (must expose <name>::url_mappings() function)"
         [port:]="Port to listen on for http requests"
@@ -841,7 +845,7 @@ showhelp() {
 #       will cause the first non option parameter to be discarded. Here, we just
 #       use -h (help)
 #===================================================================================
-long_options="help,version,debug,info,warning,error,fatal,api:,static:,port:,address:,allow:,module:,proxy:"
+long_options="help,version,debug,info,warning,error,fatal,api:,static:,port:,address:,allow:,module:,proxy:,certfile:,keyfile:"
 
 OPTION_TEMP=$(getopt -a -o hva:s:p:m: --long ${long_options} -- "$@")
 
@@ -859,7 +863,7 @@ eval set -- "$OPTION_TEMP"
 # NOTE: The command line parameters are available for scripts which
 #       source this file.
 #===================================================================================
-export _SERVER_SCRIPT="${BASH_SOURCE[0]}" _SERVER_MODULES= _SERVER_API= _SERVER_STATIC= _SERVER_PROXY=
+export _SERVER_SCRIPT="${BASH_SOURCE[0]}" _SERVER_MODULES= _SERVER_API= _SERVER_STATIC= _SERVER_PROXY= _SERVER_CERTFILE= _SERVER_KEYFILE=
 
 # Preselect static path relative to utility folder
 paths::static "$(dirname "${_SERVER_SCRIPT}")"
@@ -887,6 +891,16 @@ do
 
         --proxy)
             export _SERVER_PROXY="${2}"
+            shift 2
+            ;;
+
+        --certfile)
+            export _SERVER_CERTFILE="${2}"
+            shift 2
+            ;;
+
+        --keyfile)
+            export _SERVER_KEYFILE="${2}"
             shift 2
             ;;
 
