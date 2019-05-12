@@ -75,7 +75,7 @@ $(PACKAGE_FILE): $(LOCAL_BIN_PATH)/debianizer packages all
 	@dpkg --contents $@
 
 $(BUILD_BIN_PATH)/tlsproxy: build
-	@$(MAKE) -C $(notdir $@) all cert.pem # $(MAKECMDGOALS)
+	@$(MAKE) -C $(notdir $@) all
 	install $(notdir $@)/build/bin/$(ARCH)/$(notdir $@) $@
 
 $(BUILD_BIN_PATH)/%: build | src/bin
