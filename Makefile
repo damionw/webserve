@@ -48,8 +48,8 @@ tlsdemo: $(BUILD_BIN_PATH)/$(PACKAGE_NAME) $(BUILD_BIN_PATH)/tlsproxy examples
 	--static=$(BUILD_SHARE_EXAMPLES)/html \
 	--api=$(BUILD_SHARE_EXAMPLES)/api \
 	--proxy="$(BUILD_BIN_PATH)/tlsproxy" \
-	--certfile=tlsproxy/cert.pem \
-	--keyfile=tlsproxy/key.pem \
+	--certfile=tlsproxy/build/share/tlsproxy/cert/cert.pem \
+	--keyfile=tlsproxy/build/share/tlsproxy/cert/key.pem \
 	--module=$(BUILD_SHARE_EXAMPLES)/modules/primary-site \
 	--module=$(BUILD_SHARE_EXAMPLES)/modules/demo1 \
 	--module=$(BUILD_SHARE_EXAMPLES)/modules/postit \
