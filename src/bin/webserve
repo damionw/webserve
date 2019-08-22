@@ -40,7 +40,7 @@ fi
 #===================================================================================
 #                                  Constants
 #===================================================================================
-__WEBSERVE_VERSION__=0.22
+__WEBSERVE_VERSION__=0.23
 
 #===================================================================================
 #                                    Paths
@@ -735,6 +735,8 @@ http::run_server() {
 
     # FIXME: multiple concurrent connections (-c 2+) has unexplained read failures with the
     # service handler processes
+
+    (sleep 10; rm "${_cdb}") &
 
     # SEE: https://annvix.com/using_tcpserver
     _WEBSERVE_IN_SERVER_REQUEST_HANDLER=true exec tcpserver \
