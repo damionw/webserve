@@ -1,0 +1,1 @@
+See https://github.com/dylanaraps/pure-bash-bible for performance ideas
