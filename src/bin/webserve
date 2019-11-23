@@ -40,7 +40,7 @@ fi
 #===================================================================================
 #                                  Constants
 #===================================================================================
-__WEBSERVE_VERSION__=0.23
+__WEBSERVE_VERSION__=0.24
 
 #===================================================================================
 #                                    Paths
@@ -714,7 +714,9 @@ http::run_server() {
     # Assemble connection filter rules
     if [ "$#" -gt 0 ]
     then
-        _cdb="$(mktemp -q --suffix=.cdb)"
+        _cdb="$(
+            TMPDIR="${TMPDIR:-$(readlink -f "${HOME}${HOME:+/tmp}")}" mktemp -q --suffix=.cdb
+        )"
 
         tcprules "${_cdb}" "${_cdb}.tmp" <<< "$(
             for _addr in "$@"
@@ -736,7 +738,9 @@ http::run_server() {
     # FIXME: multiple concurrent connections (-c 2+) has unexplained read failures with the
     # service handler processes
 
-    (sleep 10; rm "${_cdb}") &
+    # Remove the rulse file when the server is finished
+    local _thepid=$$
+    (while [ -d /proc/${_thepid} ]; do sleep 10; done; rm "${_cdb}") &
 
     # SEE: https://annvix.com/using_tcpserver
     _WEBSERVE_IN_SERVER_REQUEST_HANDLER=true exec tcpserver \
