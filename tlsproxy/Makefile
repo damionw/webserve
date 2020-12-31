@@ -1,9 +1,9 @@
 PACKAGE_NAME ?= $(shell basename $(shell pwd))
 PACKAGE_VERSION := 0.0.1
 
-INCLUDES := -I. -Iinclude
+INCLUDES := -I. -Iinclude -I/usr/local/include
 CPPFLAGS := -O2
-LDFLAGS := -lssl -lcrypto
+LDFLAGS := -lssl -lcrypto -L/usr/local/lib
 LIBS :=
 FLAGS :=
 CC := gcc
