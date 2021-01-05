@@ -40,7 +40,7 @@ fi
 #===================================================================================
 #                                  Constants
 #===================================================================================
-__WEBSERVE_VERSION__=0.25
+__WEBSERVE_VERSION__=0.26
 
 #===================================================================================
 #                                    Paths
@@ -556,17 +556,53 @@ http::response_api_catalog() {
         awk 'BEGIN {print "[";} {printf("%s%s", sep, $0); sep=",";} END {print "]";}'
     }
 
-    local _api_folder="$(paths::api)"
+    local _folder="$(paths::api)"
 
-    if ! [ -n "${_api_folder}" -a -d "${_api_folder}" ]
+    if ! [ -n "${_folder}" -a -d "${_folder}" ]
     then
         http::404_error
         return
     fi
 
-    find "${_api_folder}" -mindepth 1 -maxdepth 1 -type f -printf '"%f"\n' |
+    find "${_folder}" -mindepth 1 -maxdepth 1 -type f -printf '"%f"\n' |
     listify |
     http::response_json
+}
+
+http::response_static_catalog() {
+    local _folder="$(paths::static)"
+
+    if ! [ -n "${_folder}" -a -d "${_folder}" ]
+    then
+        http::404_error
+        return
+    fi
+
+    local _path _name
+
+    cd "${_folder}" find "." -mindepth 1 -maxdepth 1 -type f -name '*.html' -printf '%p\n' | {
+        echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'
+        echo '<html lang="en-US">'
+        echo '<head>'
+        echo '</head>'
+        echo '<body>'
+        echo '<ul>'
+
+        sed -e 's/[\.][\/]//g' | while read _path
+        do
+            local _name="$(basename "${_path}" | sed -e 's/[\.][^\.]*$//g')"
+
+            echo '<li>'
+            echo '<a href="'"${_path}"'">'
+            echo "${_name}"
+            echo '</a>'
+            echo '</li>'
+        done
+
+        echo '</ul>'
+        echo '</body>'
+        echo '</html>'
+    } | http::response_html
 }
 
 http::response_script() {
