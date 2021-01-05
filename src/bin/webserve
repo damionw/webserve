@@ -580,26 +580,29 @@ http::response_static_catalog() {
 
     local _path _name
 
-    cd "${_folder}" find "." -mindepth 1 -maxdepth 1 -type f -name '*.html' -printf '%p\n' | {
+    cd "${_folder}" && find "." -mindepth 1 -maxdepth 1 -type f -name '*.html' -printf '%p\n' | {
         echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'
         echo '<html lang="en-US">'
         echo '<head>'
         echo '</head>'
         echo '<body>'
-        echo '<ul>'
+        echo '<div>'
+        echo 'Available pages'
+        echo '</div>'
+        echo '<ol>'
 
         sed -e 's/[\.][\/]//g' | while read _path
         do
             local _name="$(basename "${_path}" | sed -e 's/[\.][^\.]*$//g')"
 
-            echo '<li>'
+            echo '<li style="list-style-type: none">'
             echo '<a href="'"${_path}"'">'
             echo "${_name}"
             echo '</a>'
             echo '</li>'
         done
 
-        echo '</ul>'
+        echo '</ol>'
         echo '</body>'
         echo '</html>'
     } | http::response_html

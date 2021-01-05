@@ -49,7 +49,7 @@ http::primary::response_primary_icon() {
 }
 
 http::primary::url_mappings() {
-    url::add_handler '^\/$' GET http::primary::response_index
+    url::add_handler '^\/$' GET http::response_static_catalog
     url::add_handler '^\/index.html$' GET http::primary::response_index
     url::add_handler '^\/files[\/]*$' GET http::primary::response_primary_folder
 
