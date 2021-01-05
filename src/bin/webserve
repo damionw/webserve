@@ -409,7 +409,7 @@ http::response_file() {
     local _headers="${3}"
     local _content="${4}"
     local _b64_content="${5}"
-    local _name="$(echo "${_request}" | sed -e 's|^\/static\/||')"
+    local _name="$(echo "${_request}" | sed -e 's|^\/static\/||' -e 's|[\?].*$||')"
     local _folder="${6:-${_static}}"
     local _filename="${_folder}/${_name}"
 
@@ -417,7 +417,7 @@ http::response_file() {
 
     if [ -z "${_name}" -o ! -f "${_filename}" ]
     then
-        http::404_error "${_name} not found"
+        http::404_error "${_name} not found for request ${_request}"
         return 255
     fi
 
