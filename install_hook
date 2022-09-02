@@ -3,7 +3,7 @@
 ACTION="$1"
 VERSION="$2"
 
-VARDIR="$(dirname $0)"
+VARDIR="/var/lib/dpkg/info"
 PACKAGE_NAME="${DPKG_MAINTSCRIPT_PACKAGE}"
 LISTFILE="${VARDIR}/${PACKAGE_NAME}.list"
 PACKAGE_DIR=$(grep "${PACKAGE_NAME}"'$' < "${LISTFILE}" | head -1)
